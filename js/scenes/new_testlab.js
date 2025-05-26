@@ -128,16 +128,7 @@ class TestLabScene extends ThreejsScene {
         planeBody.material = this.groundMaterial;
         this.physicsWorld.addBody(planeBody);
 
-        // --- Character physics ---
-        // We'll create the body after the model loads
-
-        // --- Background music ---
-        // this.backgroundMusic = new Audio('sounds/background/mc.mp3');
-        // this.backgroundMusic.loop = true;
-        // this.backgroundMusic.volume = 0.5;
-        // this.backgroundMusic.play().catch((error) => {
-        //     console.error('Error playing background music:', error);
-        // });
+        this.enableMusicOnUserGesture();
 
         // --- Mouse drag for character rotation ---
         window.addEventListener('mousedown', (event) => {
@@ -387,6 +378,23 @@ class TestLabScene extends ThreejsScene {
         const sprite = new THREE.Sprite(material);
         sprite.scale.set(2, 0.5, 1); // Adjust size as needed
         return sprite;
+    }
+
+    enableMusicOnUserGesture() {
+        if (this.backgroundMusic) return; // Already set up
+
+        this.backgroundMusic = new Audio('sounds/background/mc.mp3');
+        this.backgroundMusic.loop = true;
+        this.backgroundMusic.volume = 0.5;
+
+        const playMusic = () => {
+            this.backgroundMusic.play().catch(() => {});
+            window.removeEventListener('pointerdown', playMusic);
+            window.removeEventListener('keydown', playMusic);
+        };
+
+        window.addEventListener('pointerdown', playMusic);
+        window.addEventListener('keydown', playMusic);
     }
 
     addNewCube(nearPosition = null) {
