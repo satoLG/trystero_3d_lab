@@ -45,7 +45,45 @@ class TestLabScene extends ThreejsScene {
 
         this.currentAnim = null; // Track current animation name
         this.lastSentAnim = null; // Track last sent animation name
-        this.peerAnims = {};     // Track remote peer animation states        
+        this.peerAnims = {};     // Track remote peer animation states      
+
+        this.cameraMode = 'orbit'; // 'orbit' or 'follow'
+        this.followCameraPosition = new THREE.Vector3();
+        this.followCameraTarget = new THREE.Vector3();
+        this.cameraTransitionSpeed = 0.1;
+
+        this.cameraOffset = new THREE.Vector3(0, 4, 8); // Default camera position relative to character
+        this.cameraLookOffset = new THREE.Vector3(0, 2, 0); // Look slightly above character
+        this.cameraSmoothness = 0.1; // Lower = smoother camera
+        this.rotationSmoothness = 0.1; // Lower = smoother rotation
+        
+        this.projectiles = [];
+        this.breakableTargets = [];
+        this.lastShot = 0;
+        this.shootCooldown = 200; // ms between shots  
+        
+        this.debris = []; // Store broken pieces 
+
+        this.damageThreshold = 2; // Lower = easier to damage
+        this.crackThresholds = [80, 50, 20]; // Show damage earlier
+
+        this.projectileSpeed = 50; // Faster projectiles
+        this.projectileMass = 5;   // Lighter but still impactful
+        this.breakForce = 40;      // Lower break threshold
+
+        // Collision groups
+        this.GROUPS = {
+            GROUND: 1,
+            BREAKABLE: 2,
+            PROJECTILE: 4,
+            CHARACTER: 8,
+            DEBRIS: 16
+        };
+
+        this.targetSyncTimeout = null;
+        this.initialTargetsSent = false;
+        this.lastTargetSync = 0;
+        this.targetSyncInterval = 5000; // Sync every 5 seconds
     }
 
     initDebugGui() {
@@ -98,7 +136,7 @@ class TestLabScene extends ThreejsScene {
         // --- Physics world setup ---
         this.physicsWorld = new CANNON.World({
             gravity: new CANNON.Vec3(0, -12.82, 0)
-        });
+        });   
 
         super.init(container);
 
@@ -121,9 +159,68 @@ class TestLabScene extends ThreejsScene {
         this.groundMaterial = groundMaterial;
         this.characterMaterial = characterMaterial;
 
+        // NOW add the collision listener
+        this.physicsWorld.addEventListener('beginContact', (event) => {
+            if (!event || !event.bodyA || !event.bodyB) return;
+
+            requestAnimationFrame(() => {
+                try {
+                    let projectile = this.projectiles.find(p => 
+                        p.body === event.bodyA || p.body === event.bodyB);
+                    if (!projectile) return;
+
+                    const otherBody = event.bodyA === projectile.body ? event.bodyB : event.bodyA;
+
+                    // First, check if we hit a breakable target
+                    const target = this.breakableTargets.find(t => t.body === otherBody);
+                    if (target) {
+                        // Broadcast broken state immediately
+                        if (this.sendTarget) {
+                            this.sendTarget({
+                                position: { 
+                                    x: target.mesh.position.x, 
+                                    y: target.mesh.position.y, 
+                                    z: target.mesh.position.z 
+                                },
+                                broken: true,
+                                impactPoint: {
+                                    x: projectile.mesh.position.x,
+                                    y: projectile.mesh.position.y,
+                                    z: projectile.mesh.position.z
+                                },
+                                id: target.id
+                            });
+                        }
+
+                        // Create local debris
+                        this.createDebris(target, projectile.mesh.position);
+
+                        // Remove target
+                        this.scene.remove(target.mesh);
+                        this.physicsWorld.removeBody(target.body);
+                        this.breakableTargets = this.breakableTargets.filter(t => t !== target);
+                    }
+
+                    // Remove projectile
+                    this.scene.remove(projectile.mesh);
+                    this.physicsWorld.removeBody(projectile.body);
+                    this.projectiles = this.projectiles.filter(p => p !== projectile);
+
+                } catch (error) {
+                    console.warn('Error in collision handler:', error);
+                }
+            });
+        });
+
         // --- Plane physics ---
         const planeShape = new CANNON.Plane();
-        const planeBody = new CANNON.Body({ mass: 0, shape: planeShape });
+        const planeBody = new CANNON.Body({ 
+            mass: 0, 
+            shape: planeShape,
+            material: this.groundMaterial,
+            collisionFilterGroup: this.GROUPS.GROUND,
+            collisionFilterMask: this.GROUPS.CHARACTER | this.GROUPS.BREAKABLE | this.GROUPS.PROJECTILE | this.GROUPS.DEBRIS
+        });
         planeBody.quaternion.setFromEuler(-Math.PI / 2, 0, 0);
         planeBody.material = this.groundMaterial;
         this.physicsWorld.addBody(planeBody);
@@ -131,21 +228,21 @@ class TestLabScene extends ThreejsScene {
         this.enableMusicOnUserGesture();
 
         // --- Mouse drag for character rotation ---
-        window.addEventListener('mousedown', (event) => {
-            this.isDragging = true;
-            this.previousMouseX = event.clientX;
-        });
-        window.addEventListener('mousemove', (event) => {
-            if (this.isDragging && this.character) {
-                const deltaX = event.clientX - this.previousMouseX;
-                this.previousMouseX = event.clientX;
-                const rotationSpeed = 0.01;
-                this.character.rotation.y -= deltaX * rotationSpeed;
-            }
-        });
-        window.addEventListener('mouseup', () => {
-            this.isDragging = false;
-        });
+        // window.addEventListener('mousedown', (event) => {
+        //     this.isDragging = true;
+        //     this.previousMouseX = event.clientX;
+        // });
+        // window.addEventListener('mousemove', (event) => {
+        //     if (this.isDragging && this.character) {
+        //         const deltaX = event.clientX - this.previousMouseX;
+        //         this.previousMouseX = event.clientX;
+        //         const rotationSpeed = 0.01;
+        //         this.character.rotation.y -= deltaX * rotationSpeed;
+        //     }
+        // });
+        // window.addEventListener('mouseup', () => {
+        //     this.isDragging = false;
+        // });
 
         // --- Keyboard controls ---
         window.addEventListener('keydown', (event) => {
@@ -167,6 +264,31 @@ class TestLabScene extends ThreejsScene {
             if (this.debugGui.gui) this.initDebugGui();
             this.cameraTransitioning = true;
         }, 3000);
+
+        window.addEventListener('mousedown', (event) => {
+            if (event.button === 0) { // Left click
+                this.throwProjectile();
+            }
+        });
+
+        // For mobile, add shoot button
+        if (this.isMobile) {
+            const shootBtn = document.createElement('button');
+            shootBtn.innerText = '🎯';
+            shootBtn.style.position = 'fixed';
+            shootBtn.style.right = '30px';
+            shootBtn.style.bottom = '150px';
+            shootBtn.style.width = '80px';
+            shootBtn.style.height = '80px';
+            shootBtn.style.borderRadius = '50%';
+            shootBtn.style.fontSize = '2em';
+            shootBtn.style.opacity = '0.7';
+            shootBtn.style.zIndex = 1000;
+            shootBtn.addEventListener('touchstart', () => {
+                this.throwProjectile();
+            });
+            document.body.appendChild(shootBtn);
+        }        
 
         // --- Multiplayer setup ---
         // this.room = joinRoom({ appId: 'trystero-3d-lab' }, 'main-room');
@@ -232,6 +354,50 @@ class TestLabScene extends ThreejsScene {
         this.sendButton = sendButton;
         getButton(() => {
             this.animateButtonPress();
+        });
+
+        const [sendProjectile, getProjectile] = this.room.makeAction('projectile');
+        this.sendProjectile = sendProjectile;
+        getProjectile((data, peerId) => {
+            if (peerId === selfId) return;
+            const { position, direction, velocity } = data;
+            this.createProjectile(position, direction, velocity);
+        });
+
+        const [sendTarget, getTarget] = this.room.makeAction('trg'); // Shortened name
+        this.sendTarget = sendTarget;
+        getTarget((data, peerId) => {
+            if (peerId === selfId) return;
+            const { position, broken, impactPoint, id } = data;
+            
+            if (broken) {
+                // Find and break the target
+                const target = this.breakableTargets.find(t => t.id === id);
+                if (target) {
+                    this.createDebris(target, new THREE.Vector3(impactPoint.x, impactPoint.y, impactPoint.z));
+                    this.scene.remove(target.mesh);
+                    this.physicsWorld.removeBody(target.body);
+                    this.breakableTargets = this.breakableTargets.filter(t => t !== target);
+                }
+            }
+        }); 
+        
+        const [sendInitialTargets, getInitialTargets] = this.room.makeAction('sync');
+        this.sendInitialTargets = sendInitialTargets;
+
+        // Listen for initial targets from other players
+        getInitialTargets((targets, peerId) => {
+            if (peerId === selfId) return;
+            // Clear existing targets if we're receiving from an "older" peer
+            this.breakableTargets = [];
+            targets.forEach(targetData => {
+                const position = new THREE.Vector3(
+                    targetData.position.x,
+                    targetData.position.y,
+                    targetData.position.z
+                );
+                this.breakableTargets.push(this.createBreakableTarget(position));
+            });
         });        
     }
 
@@ -245,6 +411,10 @@ class TestLabScene extends ThreejsScene {
             this.backgroundMusic.pause();
             this.backgroundMusic.currentTime = 0;
             this.backgroundMusic = null;
+        }
+
+        if (this.targetSyncTimeout) {
+            clearTimeout(this.targetSyncTimeout);
         }
         super.destroy();
     }
@@ -290,11 +460,14 @@ class TestLabScene extends ThreejsScene {
             const radius = 0.5;
             const shape = new CANNON.Sphere(radius);
             const body = new CANNON.Body({
-                mass: 0, // Kinematic bodies should have mass 0
-                type: CANNON.Body.KINEMATIC,
+                mass: 1,
+                type: CANNON.Body.DYNAMIC,
                 position: new CANNON.Vec3(model.position.x, model.position.y, model.position.z),
                 shape: shape,
-                linearDamping: 0.3
+                linearDamping: 0.3,
+                angularDamping: 0.5, // Add angular damping to prevent spinning
+                collisionFilterGroup: this.GROUPS.CHARACTER,
+                collisionFilterMask: this.GROUPS.GROUND | this.GROUPS.PROJECTILE | this.GROUPS.CHARACTER // Add CHARACTER here
             });
             this.physicsWorld.addBody(body);
             body.material = this.characterMaterial;
@@ -396,6 +569,230 @@ class TestLabScene extends ThreejsScene {
         window.addEventListener('pointerdown', playMusic);
         window.addEventListener('keydown', playMusic);
     }
+
+    // Add this new method to handle target appearance changes
+    updateTargetAppearance(target) {
+        if (!target.mesh) return;
+
+        // Calculate damage percentage
+        const damagePercent = 100 - target.health;
+        
+        // Update material color based on damage
+        const material = new THREE.MeshStandardMaterial({
+            color: new THREE.Color(0x964B00), // Base brown color
+            metalness: 0.2,
+            roughness: 0.7 + (damagePercent / 100) * 0.3, // Increase roughness with damage
+            emissive: new THREE.Color(0x771111), // Red glow
+            emissiveIntensity: (damagePercent / 100) * 0.5 // Increase glow with damage
+        });
+
+        // Add cracks via opacity
+        material.transparent = true;
+        material.opacity = Math.max(0.4, 1 - (damagePercent / 100));
+
+        target.mesh.material = material;
+
+        // Add impact shake
+        target.mesh.rotation.x += (Math.random() - 0.5) * 0.2;
+        target.mesh.rotation.z += (Math.random() - 0.5) * 0.2;
+    }
+
+    // Add this method to create and throw projectiles
+    throwProjectile() {
+        if (!this.character) return;
+        
+        const now = Date.now();
+        if (now - this.lastShot < this.shootCooldown) return;
+        this.lastShot = now;
+
+        // Get spawn position and direction
+        const direction = new THREE.Vector3(0, 0, -1);
+        direction.applyQuaternion(this.character.quaternion);
+        const spawnPoint = this.character.position.clone().add(direction.multiplyScalar(1));
+        
+        // Create projectile locally
+        this.createProjectile(spawnPoint, direction, this.projectileSpeed);
+        
+        // Broadcast projectile to other players
+        if (this.sendProjectile) {
+            this.sendProjectile({
+                position: { x: spawnPoint.x, y: spawnPoint.y, z: spawnPoint.z },
+                direction: { x: direction.x, y: direction.y, z: direction.z },
+                velocity: this.projectileSpeed
+            });
+        }
+    }
+
+    createProjectile(position, direction, speed) {
+        // Convert position and direction to Vector3 if they're plain objects
+        const posVector = position instanceof THREE.Vector3 ? 
+            position : new THREE.Vector3(position.x, position.y, position.z);
+        
+        const dirVector = direction instanceof THREE.Vector3 ? 
+            direction : new THREE.Vector3(direction.x, direction.y, direction.z);
+
+        const radius = 0.3;
+        const geometry = new THREE.IcosahedronGeometry(radius, 1);
+        const material = new THREE.MeshStandardMaterial({ 
+            color: 'brown',
+            metalness: 0.3,
+            roughness: 0.8
+        });
+        const mesh = new THREE.Mesh(geometry, material);
+        mesh.castShadow = true;
+        mesh.position.copy(posVector);
+        this.scene.add(mesh);
+
+        const shape = new CANNON.Sphere(radius);
+        const body = new CANNON.Body({
+            mass: this.projectileMass,
+            shape: shape,
+            material: this.characterMaterial,
+            collisionResponse: true,
+            linearDamping: 0.1,
+            angularDamping: 0.1,
+            collisionFilterGroup: this.GROUPS.PROJECTILE,
+            collisionFilterMask: this.GROUPS.GROUND | this.GROUPS.BREAKABLE | this.GROUPS.CHARACTER // Add CHARACTER here
+        });
+        body.position.copy(posVector);
+
+        // Add velocity using the normalized direction vector
+        const velocity = dirVector.normalize().multiplyScalar(speed);
+        body.velocity.set(velocity.x, velocity.y + 2, velocity.z);
+
+        this.physicsWorld.addBody(body);
+        this.projectiles.push({ mesh, body, createTime: Date.now() });
+    }
+
+    // Update createBreakableTarget method:
+    createBreakableTarget(position, id = null) {
+        // Verify position doesn't overlap with existing targets
+        const minDistance = 3; // Minimum distance between targets
+        for (const target of this.breakableTargets) {
+            const dist = position.distanceTo(target.mesh.position);
+            if (dist < minDistance) {
+                // Adjust position if too close
+                position.x += minDistance * (Math.random() - 0.5);
+                position.z += minDistance * (Math.random() - 0.5);
+            }
+        }
+
+        const size = 2;
+        const geometry = new THREE.BoxGeometry(size, size, size);
+        const material = new THREE.MeshStandardMaterial({ 
+            color: 0x964B00,
+            metalness: 0.2,
+            roughness: 0.7,
+            emissive: 0x000000
+        });
+        const mesh = new THREE.Mesh(geometry, material);
+        mesh.position.copy(position);
+        mesh.castShadow = true;
+        mesh.receiveShadow = true;
+        this.scene.add(mesh);
+
+        const shape = new CANNON.Box(new CANNON.Vec3(size/2, size/2, size/2));
+        const body = new CANNON.Body({
+            mass: 5,
+            shape: shape,
+            material: this.groundMaterial,
+            collisionResponse: true,
+            linearDamping: 0.4,
+            angularDamping: 0.4,
+            collisionFilterGroup: this.GROUPS.BREAKABLE,
+            collisionFilterMask: this.GROUPS.GROUND | this.GROUPS.CHARACTER | 
+                            this.GROUPS.PROJECTILE | this.GROUPS.DEBRIS
+        });
+        body.position.copy(position);
+        this.physicsWorld.addBody(body);
+
+        const target = { 
+            mesh, 
+            body, 
+            broken: false,
+            size: { width: size, height: size, depth: size },
+            position: position.clone(),
+            id: id || Math.random().toString(36).substr(2, 9)
+        };
+
+        // Store the ID on both mesh and body for easier lookup
+        mesh.userData.targetId = target.id;
+        body.targetId = target.id;
+
+        return target;
+    }
+
+    createDebris(target, impactPoint) {
+        const pieces = 20; // More debris pieces (increased from 8)
+        const size = target.size.width / 6; // Smaller pieces (1/6 of original)
+
+        for (let i = 0; i < pieces; i++) {
+            // Random offset from center with wider spread
+            const offset = new THREE.Vector3(
+                (Math.random() - 0.5) * size * 4,
+                (Math.random() - 0.5) * size * 4,
+                (Math.random() - 0.5) * size * 4
+            );
+            
+            // Create piece with random geometry
+            const geometryType = Math.random() > 0.5 ? 
+                new THREE.TetrahedronGeometry(size) : // Random sharp fragments
+                new THREE.BoxGeometry(size, size, size);
+            
+            const material = new THREE.MeshStandardMaterial({
+                color: 0x8b4513,
+                metalness: 0.3,
+                roughness: 0.8,
+                emissive: 0x331a00,
+                emissiveIntensity: 0.2
+            });
+            const mesh = new THREE.Mesh(geometryType, material);
+            
+            const position = target.mesh.position.clone().add(offset);
+            mesh.position.copy(position);
+            this.scene.add(mesh);
+
+            // Physics for debris
+            const shape = new CANNON.Box(new CANNON.Vec3(size/2, size/2, size/2));
+            const body = new CANNON.Body({
+                mass: 0.1, // Lighter pieces for more dynamic movement
+                shape: shape,
+                material: this.groundMaterial,
+                collisionResponse: true,
+                linearDamping: 0.1, // Less damping for more bouncy debris
+                angularDamping: 0.1
+            });
+            body.position.copy(position);
+
+            // Stronger explosion force
+            const explosionForce = 25; // Increased from 10
+            const direction = position.clone().sub(impactPoint).normalize();
+            const force = direction.multiplyScalar(explosionForce);
+            
+            // Add more random upward force
+            force.y += 10 + Math.random() * 10;
+
+            // Add random rotation
+            body.angularVelocity.set(
+                (Math.random() - 0.5) * 20,
+                (Math.random() - 0.5) * 20,
+                (Math.random() - 0.5) * 20
+            );
+
+            // Apply the explosion force
+            body.applyImpulse(
+                new CANNON.Vec3(force.x, force.y, force.z),
+                new CANNON.Vec3(0, 0, 0)
+            );
+
+            this.physicsWorld.addBody(body);
+            this.debris.push({ 
+                mesh, 
+                body, 
+                createTime: Date.now() 
+            });
+        }
+    } 
 
     addNewCube(nearPosition = null) {
         const textureLoader = new THREE.TextureLoader();
@@ -509,26 +906,26 @@ class TestLabScene extends ThreejsScene {
         this.renderer.shadowMap.enabled = true;
         this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
 
-        // Add camera
+        // Set up camera
         this.camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
-        this.camera.position.z = 10;
-
-        // Create orbit controls
+        
+        // Modified orbit controls
         this.controls = new OrbitControls(this.camera, this.renderer.domElement);
-        this.controls.maxPolarAngle = Math.PI / 2.5;
-        this.controls.minPolarAngle = Math.PI / 3.5;
-        this.controls.minAzimuthAngle = - Math.PI / 4; // radians
-        this.controls.maxAzimuthAngle = Math.PI / 4; // radians
-        this.controls.maxDistance = 100;
-        this.controls.minDistance = 4;
-        this.controls.maxZoom = 3;
-        this.controls.minZoom = 0.5;
-        this.controls.rotateSpeed = 1;
+        this.controls.enableDamping = true; // Add smooth camera movement
+        this.controls.dampingFactor = 0.05;
+        this.controls.enablePan = false;
+        this.controls.maxPolarAngle = Math.PI / 2.7; // Don't go below ground
+        this.controls.minPolarAngle = Math.PI / 2.7; // Allow full vertical rotation
+        this.controls.maxDistance = 10;
+        this.controls.minDistance = 10;
+        this.controls.zoomSpeed = 0.5;
+
+        this.camera.position.set(0, 5, 10);
 
         const textureLoader = new THREE.TextureLoader();
 
         // Add a dark blue sky
-        const skyColor = '#1d3557'; // Dark blue color
+        const skyColor = '#336dbf'; // Dark blue color
 
         this.scene.background = new THREE.Color(skyColor);
 
@@ -648,7 +1045,10 @@ class TestLabScene extends ThreejsScene {
                 mass: 1,
                 position: new CANNON.Vec3(spawnX, 2, spawnZ),
                 shape: shape,
-                linearDamping: 0.3 // Damping for smoother stop
+                linearDamping: 0.3,
+                angularDamping: 0.5,
+                collisionFilterGroup: this.GROUPS.CHARACTER,
+                collisionFilterMask: this.GROUPS.GROUND | this.GROUPS.BREAKABLE | this.GROUPS.PROJECTILE | this.GROUPS.CHARACTER
             });
             this.physicsWorld.addBody(this.characterBody);
             this.characterBody.material = this.characterMaterial;
@@ -672,6 +1072,34 @@ class TestLabScene extends ThreejsScene {
                 });
             }
         });
+
+        // Create breakable targets only if we're the first player
+        if (Object.keys(this.room.getPeers()).length === 0) {
+            // First player creates targets
+            this.breakableTargets = [];
+            const targets = [];
+            for (let i = 0; i < 5; i++) {
+                const position = new THREE.Vector3(
+                    Math.random() * 20 - 10,
+                    1,
+                    Math.random() * 20 - 10
+                );
+                const id = Math.random().toString(36).substr(2, 9);
+                const target = this.createBreakableTarget(position, id);
+                this.breakableTargets.push(target);
+                targets.push({
+                    position: { x: position.x, y: position.y, z: position.z },
+                    id: id
+                });
+            }
+            
+            // Send targets to other players
+            if (this.sendInitialTargets) {
+                setTimeout(() => {
+                    this.sendInitialTargets(targets);
+                }, 1000);
+            }
+        }
 
         // this.createButton()
 
@@ -780,40 +1208,57 @@ class TestLabScene extends ThreejsScene {
     updateCharacterPhysics(delta) {
         if (!this.characterBody) return;
 
-        // --- Movement input ---
+        // Get movement input
         let moveX = 0, moveZ = 0;
-        // Keyboard (WASD/arrows)
         if (this.keys['w'] || this.keys['arrowup']) moveZ -= 1;
         if (this.keys['s'] || this.keys['arrowdown']) moveZ += 1;
-        if (this.keys['a'] || this.keys['arrowleft']) moveX -= 1;
-        if (this.keys['d'] || this.keys['arrowright']) moveX += 1;
-        // Mobile joystick
+        if (this.keys['a'] || this.keys['arrowleft']) moveX += 1;
+        if (this.keys['d'] || this.keys['arrowright']) moveX -= 1;
+
+        // Mobile controls
         if (this.isMobile) {
             moveX += this.mobileMove.x;
-            moveZ += this.mobileMove.y; // Invert Y for forward
+            moveZ += this.mobileMove.y;
         }
 
-        // Normalize direction
+        // Normalize movement vector
         const len = Math.sqrt(moveX * moveX + moveZ * moveZ);
+        // In updateCharacterPhysics(), replace the movement and rotation code:
         if (len > 0) {
             moveX /= len;
             moveZ /= len;
-        }
 
-        // --- Apply movement velocity ---
-        const speed = this.characterSpeed;
-        if (len > 0) {
-            // Invert X and Z to match Three.js forward direction (-Z)
-            this.characterBody.velocity.x = moveX * speed;
-            this.characterBody.velocity.z = moveZ * speed;
+            // Get camera's forward and right directions
+            const cameraForward = new THREE.Vector3();
+            const cameraRight = new THREE.Vector3();
+            
+            // Get camera direction
+            this.camera.getWorldDirection(cameraForward);
+            cameraRight.crossVectors(this.camera.up, cameraForward);
+            
+            // Remove vertical component
+            cameraForward.y = 0;
+            cameraRight.y = 0;
+            
+            // Normalize
+            cameraForward.normalize();
+            cameraRight.normalize();
 
-            // Rotate character to face movement direction (forward = -Z)
-            if (this.character) {
-                let rotationY = Math.atan2(-moveX, -moveZ);
-                this.character.rotation.y = rotationY;
-            }
+            // Calculate movement direction
+            const moveDir = new THREE.Vector3();
+            moveDir.addScaledVector(cameraForward, -moveZ); // Keep this negative
+            moveDir.addScaledVector(cameraRight, moveX);    // Keep this positive
+            moveDir.normalize();
+
+            // Apply movement
+            this.characterBody.velocity.x = moveDir.x * this.characterSpeed;
+            this.characterBody.velocity.z = moveDir.z * this.characterSpeed;
+
+            // Fix character rotation to face movement direction
+            const angle = Math.atan2(-moveDir.x, -moveDir.z); // Add negative signs here
+            this.character.rotation.y = angle;
         } else {
-            // Let Cannon's damping slow the character naturally
+            // Stop movement but keep rotation
             this.characterBody.velocity.x = 0;
             this.characterBody.velocity.z = 0;
         }
@@ -979,12 +1424,6 @@ class TestLabScene extends ThreejsScene {
             }
         });   
 
-        // --- Camera follow ---
-        if (this.character) {
-            this.controls.target.copy(this.character.position);
-            this.controls.update();
-        }
-
         // --- Animations ---
         if (this.animationMixers.length > 0) {
             this.animationMixers.forEach(mixer => {
@@ -1003,6 +1442,65 @@ class TestLabScene extends ThreejsScene {
                     rotY: this.character.rotation.y
                 });
                 this.lastSent = now;
+            }
+        }
+
+        // Camera behavior
+        if (this.character) {
+            // Update orbit controls target to follow character
+            this.controls.target.copy(this.character.position);
+            
+            // Update controls
+            this.controls.update();
+        }
+        
+        for (let i = this.projectiles.length - 1; i >= 0; i--) {
+            const proj = this.projectiles[i];
+            proj.mesh.position.copy(proj.body.position);
+            proj.mesh.quaternion.copy(proj.body.quaternion);
+
+            // Remove old projectiles
+            if (Date.now() - proj.createTime > 5000) {
+                this.scene.remove(proj.mesh);
+                this.physicsWorld.removeBody(proj.body);
+                this.projectiles.splice(i, 1);
+                continue;
+            }
+        }
+
+        this.breakableTargets.forEach(target => {
+            if (target.mesh && target.body) {
+                target.mesh.position.copy(target.body.position);
+                target.mesh.quaternion.copy(target.body.quaternion);
+            }
+        });
+        
+        for (let i = this.debris.length - 1; i >= 0; i--) {
+            const piece = this.debris[i];
+            piece.mesh.position.copy(piece.body.position);
+            piece.mesh.quaternion.copy(piece.body.quaternion);
+
+            // Remove old debris after 5 seconds
+            if (Date.now() - piece.createTime > 5000) {
+                this.scene.remove(piece.mesh);
+                this.physicsWorld.removeBody(piece.body);
+                this.debris.splice(i, 1);
+            }
+        }
+
+        const now = Date.now();
+        if (now - this.lastTargetSync > this.targetSyncInterval) {
+            this.lastTargetSync = now;
+            if (this.sendInitialTargets && Object.keys(this.room.getPeers()).length > 0) {
+                const targetsData = this.breakableTargets.map(target => ({
+                    position: {
+                        x: target.mesh.position.x,
+                        y: target.mesh.position.y,
+                        z: target.mesh.position.z
+                    },
+                    id: target.id
+                }));
+                this.sendInitialTargets(targetsData);
             }
         }
     }
