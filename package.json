@@ -1,0 +1,22 @@
+{
+  "name": "trystero-3d-lab",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc && vite build",
+    "preview": "vite preview"
+  },
+  "dependencies": {
+    "@trystero-p2p/nostr": "^0.23.1",
+    "cannon-es": "^0.20.0",
+    "gsap": "^3.12.7",
+    "lil-gui": "^0.20.0",
+    "three": "^0.184.0"
+  },
+  "devDependencies": {
+    "@types/three": "^0.184.0",
+    "typescript": "^5.8.3",
+    "vite": "^8.0.9"
+  }
+}
