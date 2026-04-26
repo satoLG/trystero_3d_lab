@@ -9,6 +9,7 @@
   },
   "dependencies": {
     "@trystero-p2p/nostr": "^0.23.1",
+    "@trystero-p2p/torrent": "^0.23.1",
     "cannon-es": "^0.20.0",
     "gsap": "^3.12.7",
     "lil-gui": "^0.20.0",
