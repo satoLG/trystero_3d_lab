@@ -1,0 +1,18 @@
+export const SCENE_CONFIG = {
+    skyColor: '#87ceeb',
+    fogDensity: 0.007,
+    groundSize: 2000,
+    grassRepeat: 300,
+    tileRepeat: 8,
+    concreteRadius: 12,
+    treeCount: 22,
+    treeMinRadius: 20,
+    treeMaxRadius: 45,
+    treeScale: 1.25,
+    targetCount: 7,
+    targetMinRadius: 18,
+    targetMaxRadius: 35,
+    directionalLightIntensity: 1.57,
+    directionalLightPos: { x: 10, y: 50, z: 10 },
+    ambientLightIntensity: 0.024,
+};
