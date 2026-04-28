@@ -14,7 +14,7 @@ import { seededRandom } from '../utils/seededRandom.ts';
 import { buildCastle, destroyCastle } from '../modules/castle.ts';
 import { initSounds, enableMusicOnUserGesture } from '../modules/audio.ts';
 import { loadLocalCharacter, spawnPeer, removePeer, createNameLabel, updatePeerNameLabel } from '../modules/characters.ts';
-import { setupGround, setupLighting, placeStaticObjects } from '../modules/environment.ts';
+import { setupGround, setupLighting, placeStaticObjects, plantTrees, removeTrees, addForestFog, removeForestFog } from '../modules/environment.ts';
 
 const firebaseApp = initializeApp({
     apiKey:            "AIzaSyCiEcodGwYY39kZSYVmPEToXd9mwUmPHmI",
@@ -144,12 +144,38 @@ class ProtectCrystalScene extends ThreejsScene {
     hedgeLargeModel: any
     lanternModel: any
     castleWallScale: number
-    hedgeScale: number
+    nsRotOffset: number
+    ewRotOffset: number
+    cornerScale: number
+    cornerRotOffset: number
+    towerScale: number
+    towerRotOffset: number
+    hedgeCurvedScale: number
+    hedgeCurvedRotOffset: number
+    hedgeCurvedDistFromCenter: number
+    hedgeNsScale: number
+    hedgeNsRotOffset: number
+    hedgeNsInset: number
+    hedgeEwScale: number
+    hedgeEwRotOffset: number
+    hedgeEwInset: number
     lanternScale: number
+    lanternDistFromCenter: number
+    lanternLightY: number
     lanternLightIntensity: number
     lanternLightDistance: number
-    hedgeStraightRotOffset: number
-    hedgeCurvedRotOffset: number
+    roundedCubeScale: number
+    treeCount: number
+    treeForestInnerRadius: number
+    treeForestOuterRadius: number
+    treeScale: number
+    forestFogRadius: number
+    forestFogOpacity: number
+    forestFogHeight: number
+    forestFogMesh: THREE.Object3D | null
+    crystalYOffset: number
+    crystalLightIntensity: number
+    crystalLightDistance: number
     castleMeshes: THREE.Object3D[]
     castleBodies: CANNON.Body[]
     castleLanternLights: THREE.PointLight[]
@@ -265,13 +291,39 @@ class ProtectCrystalScene extends ThreejsScene {
         this.castleGateModel = null; this.castleTowerModel  = null;
         this.hedgeModel = null; this.hedgeCurvedModel = null;
         this.hedgeLargeModel = null; this.lanternModel = null;
-        this.castleWallScale        = CASTLE_CONFIG.wallScale;
-        this.hedgeScale             = CASTLE_CONFIG.hedgeScale;
-        this.lanternScale           = CASTLE_CONFIG.lanternScale;
-        this.lanternLightIntensity  = CASTLE_CONFIG.lanternLightIntensity;
-        this.lanternLightDistance   = CASTLE_CONFIG.lanternLightDistance;
-        this.hedgeStraightRotOffset = CASTLE_CONFIG.hedgeStraightRotOffset;
-        this.hedgeCurvedRotOffset   = CASTLE_CONFIG.hedgeCurvedRotOffset;
+        this.castleWallScale          = CASTLE_CONFIG.wallScale;
+        this.nsRotOffset              = CASTLE_CONFIG.nsRotOffset;
+        this.ewRotOffset              = CASTLE_CONFIG.ewRotOffset;
+        this.cornerScale              = CASTLE_CONFIG.cornerScale;
+        this.cornerRotOffset          = CASTLE_CONFIG.cornerRotOffset;
+        this.towerScale               = CASTLE_CONFIG.towerScale;
+        this.towerRotOffset           = CASTLE_CONFIG.towerRotOffset;
+        this.hedgeCurvedScale         = CASTLE_CONFIG.hedgeCurvedScale;
+        this.hedgeCurvedRotOffset     = CASTLE_CONFIG.hedgeCurvedRotOffset;
+        this.hedgeCurvedDistFromCenter = CASTLE_CONFIG.hedgeCurvedDistFromCenter;
+        this.hedgeNsScale             = CASTLE_CONFIG.hedgeNsScale;
+        this.hedgeNsRotOffset         = CASTLE_CONFIG.hedgeNsRotOffset;
+        this.hedgeNsInset             = CASTLE_CONFIG.hedgeNsInset;
+        this.hedgeEwScale             = CASTLE_CONFIG.hedgeEwScale;
+        this.hedgeEwRotOffset         = CASTLE_CONFIG.hedgeEwRotOffset;
+        this.hedgeEwInset             = CASTLE_CONFIG.hedgeEwInset;
+        this.lanternScale             = CASTLE_CONFIG.lanternScale;
+        this.lanternDistFromCenter    = CASTLE_CONFIG.lanternDistFromCenter;
+        this.lanternLightY            = CASTLE_CONFIG.lanternLightY;
+        this.lanternLightIntensity    = CASTLE_CONFIG.lanternLightIntensity;
+        this.lanternLightDistance     = CASTLE_CONFIG.lanternLightDistance;
+        this.roundedCubeScale         = SCENE_CONFIG.roundedCubeScale;
+        this.treeCount                = SCENE_CONFIG.treeCount;
+        this.treeForestInnerRadius    = SCENE_CONFIG.treeForestInnerRadius;
+        this.treeForestOuterRadius    = SCENE_CONFIG.treeForestOuterRadius;
+        this.treeScale                = SCENE_CONFIG.treeScale;
+        this.forestFogRadius          = SCENE_CONFIG.forestFogRadius;
+        this.forestFogOpacity         = SCENE_CONFIG.forestFogOpacity;
+        this.forestFogHeight          = SCENE_CONFIG.forestFogHeight;
+        this.forestFogMesh            = null;
+        this.crystalYOffset           = SCENE_CONFIG.crystalYOffset;
+        this.crystalLightIntensity    = SCENE_CONFIG.crystalLightIntensity;
+        this.crystalLightDistance     = SCENE_CONFIG.crystalLightDistance;
         this.castleMeshes = []; this.castleBodies = []; this.castleLanternLights = [];
         this.fountainMesh = null; this.crystalMesh = null;
         this.crystalBaseY = 0; this.crystalLight = null; this.crystalBody = null;
@@ -427,14 +479,28 @@ class ProtectCrystalScene extends ThreejsScene {
             });
         };
 
+        // ── Cubes ──────────────────────────────────────────────────────────────
+        const respawnCubes = () => {
+            this.breakableTargets.forEach(t => { this.scene.remove(t.mesh); this.physicsWorld.removeBody(t.body); });
+            this.breakableTargets = [];
+            this.createInitialTargets();
+            this.syncTargetPhysicsType();
+        };
         const cubeFolder = this.debugGui.gui.addFolder('Cubes');
-        cubeFolder.add({ respawn: () => this.createInitialTargets() }, 'respawn').name('Respawn Targets');
+        cubeFolder.add(this, 'roundedCubeScale', 0.5, 8).name('Scale').onFinishChange(respawnCubes);
+        cubeFolder.add({ respawn: respawnCubes }, 'respawn').name('Respawn Targets');
+        cubeFolder.add({ copy: () => copyConfig('SCENE', {
+            roundedCubeScale: this.roundedCubeScale,
+            targetCount: this.breakableTargets.length || 7,
+        }) }, 'copy').name('📋 Copy Cube Config');
 
+        // ── Camera ─────────────────────────────────────────────────────────────
         const cameraFolder = this.debugGui.gui.addFolder('Camera');
         cameraFolder.add(this.camera.position, 'x', -50, 50).name('Position X').listen();
         cameraFolder.add(this.camera.position, 'y', -50, 50).name('Position Y').listen();
         cameraFolder.add(this.camera.position, 'z', -50, 50).name('Position Z').listen();
 
+        // ── Lighting ───────────────────────────────────────────────────────────
         const lightFolder = this.debugGui.gui.addFolder('Directional Light');
         lightFolder.add(this.directionalLight.position, 'x', -100, 100).name('Position X').listen();
         lightFolder.add(this.directionalLight.position, 'y', -100, 100).name('Position Y').listen();
@@ -445,37 +511,129 @@ class ProtectCrystalScene extends ThreejsScene {
             directionalLightPos: { x: this.directionalLight.position.x, y: this.directionalLight.position.y, z: this.directionalLight.position.z },
             ambientLightIntensity: this.ambientLight.intensity,
         }) }, 'copy').name('📋 Copy Light Config');
-
         const ambientLightFolder = this.debugGui.gui.addFolder('Ambient Light');
         ambientLightFolder.add(this.ambientLight, 'intensity', 0, 6).name('Intensity').listen();
 
-        const ptFolder = this.debugGui.gui.addFolder('Point Lights (Lanterns)');
-        ptFolder.add(this, 'lanternLightIntensity', 0, 60).name('Intensity').onChange(() => {
+        // ── Castle ─────────────────────────────────────────────────────────────
+        const rebuild = () => { this.destroyCastle(); this.buildCastle(); };
+
+        const wallsFolder = this.debugGui.gui.addFolder('Castle Walls');
+        wallsFolder.add(this, 'castleWallScale', 0.5, 8).name('Scale').onFinishChange(rebuild);
+        wallsFolder.add(this, 'nsRotOffset', -Math.PI, Math.PI).name('N/S Rot Offset').onFinishChange(rebuild);
+        wallsFolder.add(this, 'ewRotOffset', -Math.PI, Math.PI).name('E/W Rot Offset').onFinishChange(rebuild);
+
+        const cornersFolder = this.debugGui.gui.addFolder('Castle Corners');
+        cornersFolder.add(this, 'cornerScale', 0.5, 8).name('Corner Scale').onFinishChange(rebuild);
+        cornersFolder.add(this, 'cornerRotOffset', -Math.PI, Math.PI).name('Corner Rot').onFinishChange(rebuild);
+        cornersFolder.add(this, 'towerScale', 0.5, 8).name('Tower Scale').onFinishChange(rebuild);
+        cornersFolder.add(this, 'towerRotOffset', -Math.PI, Math.PI).name('Tower Rot').onFinishChange(rebuild);
+
+        const hedgesFolder = this.debugGui.gui.addFolder('Castle Hedges (Curved)');
+        hedgesFolder.add(this, 'hedgeCurvedScale', 0.5, 5).name('Scale').onFinishChange(rebuild);
+        hedgesFolder.add(this, 'hedgeCurvedRotOffset', -Math.PI, Math.PI).name('Rot (inward)').onFinishChange(rebuild);
+        hedgesFolder.add(this, 'hedgeCurvedDistFromCenter', 0, 20).name('Dist from Center').onFinishChange(rebuild);
+
+        const hedgeNsFolder = this.debugGui.gui.addFolder('Castle Hedges (N/S)');
+        hedgeNsFolder.add(this, 'hedgeNsScale', 0.5, 5).name('Scale').onFinishChange(rebuild);
+        hedgeNsFolder.add(this, 'hedgeNsRotOffset', -Math.PI, Math.PI).name('Rot Offset').onFinishChange(rebuild);
+        hedgeNsFolder.add(this, 'hedgeNsInset', 0, 5).name('Wall Inset').onFinishChange(rebuild);
+
+        const hedgeEwFolder = this.debugGui.gui.addFolder('Castle Hedges (E/W)');
+        hedgeEwFolder.add(this, 'hedgeEwScale', 0.5, 5).name('Scale').onFinishChange(rebuild);
+        hedgeEwFolder.add(this, 'hedgeEwRotOffset', -Math.PI, Math.PI).name('Rot Offset').onFinishChange(rebuild);
+        hedgeEwFolder.add(this, 'hedgeEwInset', 0, 5).name('Wall Inset').onFinishChange(rebuild);
+
+        const lanternsFolder = this.debugGui.gui.addFolder('Castle Lanterns');
+        lanternsFolder.add(this, 'lanternScale', 0.5, 8).name('Scale').onFinishChange(rebuild);
+        lanternsFolder.add(this, 'lanternDistFromCenter', 0, 20).name('Dist from Center').onFinishChange(rebuild);
+        lanternsFolder.add(this, 'lanternLightY', 0, 10).name('Light Y (×scale)').onFinishChange(rebuild);
+        lanternsFolder.add(this, 'lanternLightIntensity', 0, 200).name('Intensity').onChange(() => {
             this.castleLanternLights.forEach(l => { l.intensity = this.lanternLightIntensity; });
         });
-        ptFolder.add(this, 'lanternLightDistance', 1, 60).name('Distance').onChange(() => {
+        lanternsFolder.add(this, 'lanternLightDistance', 1, 200).name('Distance').onChange(() => {
             this.castleLanternLights.forEach(l => { l.distance = this.lanternLightDistance; });
         });
 
-        const castleFolder = this.debugGui.gui.addFolder('Castle Scales');
-        const rebuild = () => { this.destroyCastle(); this.buildCastle(); };
-        castleFolder.add(this, 'castleWallScale', 0.5, 8).name('Wall Scale').onFinishChange(rebuild);
-        castleFolder.add(this, 'hedgeScale', 0.5, 5).name('Hedge Scale').onFinishChange(rebuild);
-        castleFolder.add(this, 'lanternScale', 0.5, 5).name('Lantern Scale').onFinishChange(rebuild);
-        castleFolder.add({ copy: () => copyConfig('CASTLE', {
+        this.debugGui.gui.add({ copy: () => copyConfig('CASTLE', {
             wallScale: this.castleWallScale,
-            hedgeScale: this.hedgeScale,
+            nsRotOffset: this.nsRotOffset,
+            ewRotOffset: this.ewRotOffset,
+            cornerScale: this.cornerScale,
+            cornerRotOffset: this.cornerRotOffset,
+            towerScale: this.towerScale,
+            towerRotOffset: this.towerRotOffset,
+            hedgeCurvedScale: this.hedgeCurvedScale,
+            hedgeCurvedRotOffset: this.hedgeCurvedRotOffset,
+            hedgeCurvedDistFromCenter: this.hedgeCurvedDistFromCenter,
+            hedgeNsScale: this.hedgeNsScale,
+            hedgeNsRotOffset: this.hedgeNsRotOffset,
+            hedgeNsInset: this.hedgeNsInset,
+            hedgeEwScale: this.hedgeEwScale,
+            hedgeEwRotOffset: this.hedgeEwRotOffset,
+            hedgeEwInset: this.hedgeEwInset,
             lanternScale: this.lanternScale,
+            lanternDistFromCenter: this.lanternDistFromCenter,
+            lanternLightY: this.lanternLightY,
             lanternLightIntensity: this.lanternLightIntensity,
             lanternLightDistance: this.lanternLightDistance,
-            hedgeStraightRotOffset: this.hedgeStraightRotOffset,
-            hedgeCurvedRotOffset: this.hedgeCurvedRotOffset,
         }) }, 'copy').name('📋 Copy Castle Config');
 
-        const hedgeFolder = this.debugGui.gui.addFolder('Hedge Rotations');
-        hedgeFolder.add(this, 'hedgeStraightRotOffset', -Math.PI, Math.PI).name('Straight Offset').onFinishChange(rebuild);
-        hedgeFolder.add(this, 'hedgeCurvedRotOffset', -Math.PI, Math.PI).name('Curved Offset').onFinishChange(rebuild);
+        // ── Trees ──────────────────────────────────────────────────────────────
+        const rebuildTrees = () => { removeTrees(this); plantTrees(this); };
+        const treesFolder = this.debugGui.gui.addFolder('Trees');
+        treesFolder.add(this, 'treeCount', 10, 2000, 1).name('Count');
+        treesFolder.add(this, 'treeForestInnerRadius', 10, 120).name('Inner Radius');
+        treesFolder.add(this, 'treeForestOuterRadius', 20, 150).name('Outer Radius');
+        treesFolder.add({ rebuild: rebuildTrees }, 'rebuild').name('Rebuild Forest');
+        treesFolder.add({ copy: () => copyConfig('SCENE', {
+            treeCount: this.treeCount,
+            treeForestInnerRadius: this.treeForestInnerRadius,
+            treeForestOuterRadius: this.treeForestOuterRadius,
+            treeScale: this.treeScale,
+        }) }, 'copy').name('📋 Copy Tree Config');
 
+        // ── Forest Fog ─────────────────────────────────────────────────────────
+        const rebuildFog = () => { removeForestFog(this); addForestFog(this); };
+        const fogFolder = this.debugGui.gui.addFolder('Forest Fog');
+        fogFolder.add(this, 'forestFogRadius', 20, 200).name('Radius').onFinishChange(rebuildFog);
+        fogFolder.add(this, 'forestFogOpacity', 0, 1).name('Opacity').onChange(() => {
+            if (this.forestFogMesh) (this.forestFogMesh as THREE.Mesh).material['opacity'] = this.forestFogOpacity;
+        });
+        fogFolder.add(this, 'forestFogHeight', 5, 100).name('Height').onFinishChange(rebuildFog);
+        fogFolder.add({ copy: () => copyConfig('SCENE', {
+            forestFogRadius: this.forestFogRadius,
+            forestFogOpacity: this.forestFogOpacity,
+            forestFogHeight: this.forestFogHeight,
+        }) }, 'copy').name('📋 Copy Fog Config');
+
+        // ── Crystal & Fountain ─────────────────────────────────────────────────
+        const crystalFolder = this.debugGui.gui.addFolder('Crystal & Fountain');
+        crystalFolder.add(this, 'crystalYOffset', 0, 10).name('Crystal Y Offset').onFinishChange(() => {
+            if (!this.crystalMesh || !this.crystalLight || !this.crystalBody) return;
+            // Recompute base Y from fountain mesh bounding box
+            if (this.fountainMesh) {
+                const fbbox = new THREE.Box3().setFromObject(this.fountainMesh);
+                this.crystalBaseY = fbbox.max.y + this.crystalYOffset;
+            } else {
+                this.crystalBaseY += this.crystalYOffset;
+            }
+            this.crystalMesh.position.y = this.crystalBaseY;
+            this.crystalLight.position.y = this.crystalBaseY;
+            this.crystalBody.position.y = this.crystalBaseY;
+        });
+        crystalFolder.add(this, 'crystalLightIntensity', 0, 30).name('Light Intensity').onChange(() => {
+            if (this.crystalLight) this.crystalLight.intensity = this.crystalLightIntensity;
+        });
+        crystalFolder.add(this, 'crystalLightDistance', 0, 100).name('Light Distance').onChange(() => {
+            if (this.crystalLight) this.crystalLight.distance = this.crystalLightDistance;
+        });
+        crystalFolder.add({ copy: () => copyConfig('SCENE', {
+            crystalYOffset: this.crystalYOffset,
+            crystalLightIntensity: this.crystalLightIntensity,
+            crystalLightDistance: this.crystalLightDistance,
+        }) }, 'copy').name('📋 Copy Crystal Config');
+
+        // ── Physics ────────────────────────────────────────────────────────────
         const physFolder = this.debugGui.gui.addFolder('Physics');
         physFolder.add(this, 'characterSpeed', 1, 20).name('Speed').listen();
         physFolder.add(this, 'jumpVelocity', 2, 20).name('Jump').listen();
@@ -931,17 +1089,60 @@ class ProtectCrystalScene extends ThreejsScene {
 
     createBreakableTarget(position: THREE.Vector3, id: string = null, skipOverlapCheck = false) {
         if (!skipOverlapCheck) {
-            const minDistance = 3;
+            // Push away from other cubes
+            const minCubeDist = 3.5;
             for (const target of this.breakableTargets) {
-                if (position.distanceTo(target.mesh.position) < minDistance) { position.x += minDistance * (Math.random() - 0.5); position.z += minDistance * (Math.random() - 0.5); }
+                const dx = position.x - target.mesh.position.x, dz = position.z - target.mesh.position.z;
+                const dist = Math.sqrt(dx * dx + dz * dz);
+                if (dist < minCubeDist) {
+                    const scale = minCubeDist / (dist || 0.01);
+                    position.x = target.mesh.position.x + dx * scale;
+                    position.z = target.mesh.position.z + dz * scale;
+                }
+            }
+            // Push away from trees
+            const minTreeDist = 4;
+            for (const treeMesh of this.treeMeshes) {
+                const dx = position.x - treeMesh.position.x, dz = position.z - treeMesh.position.z;
+                const dist = Math.sqrt(dx * dx + dz * dz);
+                if (dist < minTreeDist) {
+                    const scale = minTreeDist / (dist || 0.01);
+                    position.x = treeMesh.position.x + dx * scale;
+                    position.z = treeMesh.position.z + dz * scale;
+                }
+            }
+            // Push outside castle square bounds
+            const castleHalf = this.concreteRadius + 3;
+            if (Math.abs(position.x) < castleHalf && Math.abs(position.z) < castleHalf) {
+                const pushX = castleHalf - Math.abs(position.x) + 0.1;
+                const pushZ = castleHalf - Math.abs(position.z) + 0.1;
+                if (pushX < pushZ) {
+                    position.x += position.x >= 0 ? pushX : -pushX;
+                } else {
+                    position.z += position.z >= 0 ? pushZ : -pushZ;
+                }
             }
         }
+        const cubeScale = this.roundedCubeScale ?? 2.5;
         let physHalfX = 0.75, physHalfY = 0.75, physHalfZ = 0.75;
         const wrapper = new THREE.Group();
         if (this.roundedCubeModel) {
             const modelClone = this.roundedCubeModel.clone();
-            modelClone.scale.setScalar(2.5);
-            modelClone.traverse((child: any) => { if (child.isMesh) { if (child.material) child.material = child.material.clone(); child.castShadow = true; child.receiveShadow = true; } });
+            modelClone.scale.setScalar(cubeScale);
+            modelClone.traverse((child: any) => {
+                if (child.isMesh) {
+                    if (child.material) {
+                        if (!child.material.isMeshStandardMaterial) {
+                            const orig = child.material;
+                            child.material = new THREE.MeshStandardMaterial({ color: orig.color ?? 0xffffff, roughness: 0.8, metalness: 0.1 });
+                        } else {
+                            child.material = child.material.clone();
+                        }
+                    }
+                    child.castShadow = true;
+                    child.receiveShadow = true;
+                }
+            });
             modelClone.updateWorldMatrix(false, true);
             const bbox = new THREE.Box3().setFromObject(modelClone);
             const bboxCenter = new THREE.Vector3(); bbox.getCenter(bboxCenter);
@@ -956,11 +1157,12 @@ class ProtectCrystalScene extends ThreejsScene {
             physHalfX = physHalfY = physHalfZ = s / 2; wrapper.add(boxMesh);
         }
         const mesh: THREE.Object3D = wrapper;
-        position.y = physHalfY + 5;
+        position.y = physHalfY + 0.01;
         mesh.position.copy(position);
         this.scene.add(mesh);
         const shape = new CANNON.Box(new CANNON.Vec3(physHalfX, physHalfY, physHalfZ));
-        const body = new CANNON.Body({ mass: 0, type: CANNON.Body.KINEMATIC, shape, material: this.groundMaterial, collisionResponse: true, linearDamping: 0.4, angularDamping: 0.4, collisionFilterGroup: this.GROUPS.BREAKABLE, collisionFilterMask: this.GROUPS.GROUND | this.GROUPS.CHARACTER | this.GROUPS.PROJECTILE | this.GROUPS.DEBRIS });
+        // STATIC added so cubes collide with castle walls; BREAKABLE so cubes collide with each other
+        const body = new CANNON.Body({ mass: 0, type: CANNON.Body.KINEMATIC, shape, material: this.groundMaterial, collisionResponse: true, linearDamping: 0.4, angularDamping: 0.4, collisionFilterGroup: this.GROUPS.BREAKABLE, collisionFilterMask: this.GROUPS.GROUND | this.GROUPS.CHARACTER | this.GROUPS.PROJECTILE | this.GROUPS.DEBRIS | this.GROUPS.BREAKABLE | this.GROUPS.STATIC });
         body.position.copy(position as any);
         this.physicsWorld.addBody(body);
         const physSize = physHalfX * 2;

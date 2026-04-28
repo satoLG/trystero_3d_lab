@@ -11,9 +11,8 @@ export function setupGround(ctx: any) {
     const grassTex = tl.load('/textures/testlab/floor_ground_grass.png');
     grassTex.wrapS = grassTex.wrapT = THREE.RepeatWrapping;
     grassTex.repeat.set(SCENE_CONFIG.grassRepeat, SCENE_CONFIG.grassRepeat);
-    grassTex.minFilter = THREE.LinearMipmapLinearFilter;
-    grassTex.magFilter = THREE.LinearFilter;
-    grassTex.anisotropy = ctx.renderer.capabilities.getMaxAnisotropy();
+    grassTex.minFilter = THREE.NearestFilter;
+    grassTex.magFilter = THREE.NearestFilter;
     const planeMat = new THREE.MeshStandardMaterial({ map: grassTex, roughness: 0.9 });
     ctx.plane = new THREE.Mesh(geo, planeMat);
     ctx.plane.receiveShadow = true;
@@ -26,8 +25,8 @@ export function setupGround(ctx: any) {
     const tileTex = tl.load('/textures/testlab/floor_tiles_tan_small.png');
     tileTex.wrapS = tileTex.wrapT = THREE.RepeatWrapping;
     tileTex.repeat.set(SCENE_CONFIG.tileRepeat, SCENE_CONFIG.tileRepeat);
-    tileTex.minFilter = THREE.LinearMipmapLinearFilter;
-    tileTex.anisotropy = ctx.renderer.capabilities.getMaxAnisotropy();
+    tileTex.minFilter = THREE.NearestFilter;
+    tileTex.magFilter = THREE.NearestFilter;
     const tileMat = new THREE.MeshStandardMaterial({
         map: tileTex, roughness: 0.85,
         polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2,
@@ -58,8 +57,8 @@ export function setupGround(ctx: any) {
     const damagedTex = tl.load('/textures/testlab/floor_tiles_tan_small_damaged.png');
     damagedTex.wrapS = damagedTex.wrapT = THREE.RepeatWrapping;
     damagedTex.repeat.set(SCENE_CONFIG.tileRepeat, SCENE_CONFIG.tileRepeat);
-    damagedTex.minFilter = THREE.LinearMipmapLinearFilter;
-    damagedTex.anisotropy = ctx.renderer.capabilities.getMaxAnisotropy();
+    damagedTex.minFilter = THREE.NearestFilter;
+    damagedTex.magFilter = THREE.NearestFilter;
     const damagedMat = new THREE.MeshStandardMaterial({
         map: damagedTex, roughness: 0.9,
         transparent: true, alphaMap: alphaMask, depthWrite: false,
@@ -82,18 +81,102 @@ export function setupLighting(ctx: any) {
     ctx.directionalLight.castShadow = true;
     ctx.directionalLight.shadow.mapSize.width  = 2048;
     ctx.directionalLight.shadow.mapSize.height = 2048;
-    ctx.directionalLight.shadow.camera.left   = -60;
-    ctx.directionalLight.shadow.camera.right  =  60;
-    ctx.directionalLight.shadow.camera.top    =  60;
-    ctx.directionalLight.shadow.camera.bottom = -60;
+    ctx.directionalLight.shadow.camera.left   = -80;
+    ctx.directionalLight.shadow.camera.right  =  80;
+    ctx.directionalLight.shadow.camera.top    =  80;
+    ctx.directionalLight.shadow.camera.bottom = -80;
     ctx.directionalLight.shadow.camera.near   = 0.5;
-    ctx.directionalLight.shadow.camera.far    = 120;
-    ctx.directionalLight.shadow.bias          = -0.0005;
-    ctx.directionalLight.shadow.normalBias    =  0.02;
+    ctx.directionalLight.shadow.camera.far    = 160;
+    ctx.directionalLight.shadow.bias          = -0.003;
+    ctx.directionalLight.shadow.normalBias    =  0.05;
     ctx.scene.add(ctx.directionalLight);
 
     ctx.ambientLight = new THREE.AmbientLight(0xffffff, SCENE_CONFIG.ambientLightIntensity);
     ctx.scene.add(ctx.ambientLight);
+}
+
+export function removeTrees(ctx: any) {
+    ctx.treeMeshes.forEach((m: THREE.Object3D) => ctx.scene.remove(m));
+    ctx.treeMeshes = [];
+    ctx.treeBodies.forEach((b: CANNON.Body) => ctx.physicsWorld?.removeBody(b));
+    ctx.treeBodies = [];
+}
+
+export function plantTrees(ctx: any) {
+    const innerR = ctx.treeForestInnerRadius ?? SCENE_CONFIG.treeForestInnerRadius;
+    const outerR = ctx.treeForestOuterRadius ?? SCENE_CONFIG.treeForestOuterRadius;
+    const count  = ctx.treeCount  ?? SCENE_CONFIG.treeCount;
+    const scale  = ctx.treeScale  ?? SCENE_CONFIG.treeScale;
+
+    for (let i = 0; i < count; i++) {
+        const angle  = seededRandom(ctx.roomId, 100 + i * 2) * Math.PI * 2;
+        const t      = seededRandom(ctx.roomId, 101 + i * 2);
+        const radius = innerR + t * (outerR - innerR);
+        const x = Math.cos(angle) * radius;
+        const z = Math.sin(angle) * radius;
+
+        const tModel = i % 2 === 0 ? ctx.treeCrookedModel : ctx.treeHighCrookedModel;
+        const tMesh = tModel.clone();
+        tMesh.scale.setScalar(scale);
+        tMesh.traverse((c: any) => {
+            if (c.isMesh) {
+                c.castShadow = true;
+                c.receiveShadow = true;
+                c.frustumCulled = true;
+            }
+        });
+        tMesh.position.set(x, 0, z);
+        ctx.scene.add(tMesh);
+        ctx.treeMeshes.push(tMesh);
+
+        tMesh.updateWorldMatrix(false, true);
+        const tbbox = new THREE.Box3().setFromObject(tMesh);
+        const tSize = new THREE.Vector3(); tbbox.getSize(tSize);
+        const tCenter = new THREE.Vector3(); tbbox.getCenter(tCenter);
+        const tBody = new CANNON.Body({
+            mass: 0, type: CANNON.Body.STATIC,
+            collisionFilterGroup: ctx.GROUPS.STATIC,
+            collisionFilterMask: ctx.GROUPS.CHARACTER | ctx.GROUPS.PROJECTILE | ctx.GROUPS.PEER_CHARACTER | ctx.GROUPS.DEBRIS,
+        });
+        tBody.addShape(
+            new CANNON.Box(new CANNON.Vec3(tSize.x / 2, tSize.y / 2, tSize.z / 2)),
+            new CANNON.Vec3(tCenter.x - x, tCenter.y, tCenter.z - z),
+        );
+        tBody.position.set(x, 0, z);
+        ctx.physicsWorld.addBody(tBody);
+        ctx.treeBodies.push(tBody);
+    }
+}
+
+export function removeForestFog(ctx: any) {
+    if (ctx.forestFogMesh) {
+        ctx.scene.remove(ctx.forestFogMesh);
+        ctx.forestFogMesh = null;
+    }
+}
+
+export function addForestFog(ctx: any) {
+    removeForestFog(ctx);
+    const radius  = ctx.forestFogRadius  ?? SCENE_CONFIG.forestFogRadius;
+    const opacity = ctx.forestFogOpacity ?? SCENE_CONFIG.forestFogOpacity;
+    const height  = ctx.forestFogHeight  ?? SCENE_CONFIG.forestFogHeight;
+    const skyColor = new THREE.Color(SCENE_CONFIG.skyColor);
+
+    // Tall inside-facing cylinder that fades to sky color at the forest boundary
+    const fogGeo = new THREE.CylinderGeometry(radius, radius, height, 64, 1, true);
+    const fogMat = new THREE.MeshBasicMaterial({
+        color: skyColor,
+        transparent: true,
+        opacity,
+        side: THREE.BackSide,
+        depthWrite: false,
+        fog: false,
+    });
+    const fogMesh = new THREE.Mesh(fogGeo, fogMat);
+    fogMesh.position.y = height / 2;
+    fogMesh.renderOrder = 10;
+    ctx.scene.add(fogMesh);
+    ctx.forestFogMesh = fogMesh;
 }
 
 export function placeStaticObjects(ctx: any) {
@@ -119,7 +202,9 @@ export function placeStaticObjects(ctx: any) {
     );
     fBody.position.set(0, 0, 0);
     ctx.physicsWorld.addBody(fBody);
-    ctx.crystalBaseY = fbbox.max.y + 1.5;
+
+    const yOff = ctx.crystalYOffset ?? SCENE_CONFIG.crystalYOffset;
+    ctx.crystalBaseY = fbbox.max.y + yOff;
 
     // ── Crystal ───────────────────────────────────────────────────────────────
     const cMesh = ctx.crystalModel.clone();
@@ -128,7 +213,9 @@ export function placeStaticObjects(ctx: any) {
     ctx.scene.add(cMesh);
     ctx.crystalMesh = cMesh;
 
-    ctx.crystalLight = new THREE.PointLight(0x4499ff, 2.5, 30);
+    const clIntensity = ctx.crystalLightIntensity ?? SCENE_CONFIG.crystalLightIntensity;
+    const clDistance  = ctx.crystalLightDistance  ?? SCENE_CONFIG.crystalLightDistance;
+    ctx.crystalLight = new THREE.PointLight(0x4499ff, clIntensity, clDistance);
     ctx.crystalLight.position.set(0, ctx.crystalBaseY, 0);
     ctx.scene.add(ctx.crystalLight);
 
@@ -143,36 +230,10 @@ export function placeStaticObjects(ctx: any) {
     ctx.crystalBody = cBody;
 
     // ── Trees ─────────────────────────────────────────────────────────────────
-    for (let i = 0; i < SCENE_CONFIG.treeCount; i++) {
-        const angle  = seededRandom(ctx.roomId, 100 + i * 2) * Math.PI * 2;
-        const radius = SCENE_CONFIG.treeMinRadius + seededRandom(ctx.roomId, 101 + i * 2) * (SCENE_CONFIG.treeMaxRadius - SCENE_CONFIG.treeMinRadius);
-        const x = Math.cos(angle) * radius;
-        const z = Math.sin(angle) * radius;
-        const tModel = i % 2 === 0 ? ctx.treeCrookedModel : ctx.treeHighCrookedModel;
-        const tMesh = tModel.clone();
-        tMesh.scale.setScalar(SCENE_CONFIG.treeScale);
-        tMesh.traverse((c: any) => { if (c.isMesh) { c.castShadow = true; c.receiveShadow = true; } });
-        tMesh.position.set(x, 0, z);
-        ctx.scene.add(tMesh);
-        ctx.treeMeshes.push(tMesh);
+    plantTrees(ctx);
 
-        tMesh.updateWorldMatrix(false, true);
-        const tbbox = new THREE.Box3().setFromObject(tMesh);
-        const tSize = new THREE.Vector3(); tbbox.getSize(tSize);
-        const tCenter = new THREE.Vector3(); tbbox.getCenter(tCenter);
-        const tBody = new CANNON.Body({
-            mass: 0, type: CANNON.Body.STATIC,
-            collisionFilterGroup: ctx.GROUPS.STATIC,
-            collisionFilterMask: ctx.GROUPS.CHARACTER | ctx.GROUPS.PROJECTILE | ctx.GROUPS.PEER_CHARACTER | ctx.GROUPS.DEBRIS,
-        });
-        tBody.addShape(
-            new CANNON.Box(new CANNON.Vec3(tSize.x / 2, tSize.y / 2, tSize.z / 2)),
-            new CANNON.Vec3(tCenter.x - x, tCenter.y, tCenter.z - z),
-        );
-        tBody.position.set(x, 0, z);
-        ctx.physicsWorld.addBody(tBody);
-        ctx.treeBodies.push(tBody);
-    }
+    // ── Forest fog ring ───────────────────────────────────────────────────────
+    addForestFog(ctx);
 
     ctx.buildCastle();
 }
