@@ -1,6 +1,6 @@
 import './style/main.css'
 import DebugGui from './base/debug_gui.ts'
-import TestLabScene from './scenes/new_testlab.ts'
+import ProtectCrystalScene from './scenes/protect_crystal.ts'
 
 let currentScene = null;
 
@@ -95,7 +95,7 @@ function onWindowResize() {
 
 document.addEventListener('DOMContentLoaded', () => {
     showEntryModal(({ name, characterModel, projectileModel }) => {
-        initScene(TestLabScene, { name, characterModel, projectileModel });
+        initScene(ProtectCrystalScene, { name, characterModel, projectileModel });
         window.addEventListener('resize', onWindowResize);
     });
 });

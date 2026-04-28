@@ -1,0 +1,15 @@
+export const PHYSICS_CONFIG = {
+    gravity: -12.82,
+    characterSpeed: 5,
+    jumpVelocity: 8,
+    shootCooldown: 400,
+    projectileSpeed: 18,
+    projectileMass: 5,
+    breakForce: 40,
+    damageThreshold: 2,
+    debrisCount: 20,
+    debrisLifetime: 5000,
+    projectileLifetime: 10000,
+    networkPositionRate: 40,
+    physicsBroadcastRate: 100,
+};

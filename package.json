@@ -8,9 +8,11 @@
     "preview": "vite preview"
   },
   "dependencies": {
+    "@trystero-p2p/firebase": "^0.23.1",
     "@trystero-p2p/nostr": "^0.23.1",
     "@trystero-p2p/torrent": "^0.23.1",
     "cannon-es": "^0.20.0",
+    "firebase": "^12.12.1",
     "gsap": "^3.12.7",
     "lil-gui": "^0.20.0",
     "three": "^0.184.0"
