@@ -113,7 +113,23 @@ export function buildCastle(ctx: any) {
         { x:  SQ, z:   0, ry: R_E },
         { x:   0, z:  SQ, ry: R_S },
         { x: -SQ, z:   0, ry: R_W },
-    ].forEach(({ x, z, ry }) => place(ctx.castleGateModel, x, z, ry, WS));
+    ].forEach(({ x, z, ry }) => {
+        const gateMesh = place(ctx.castleGateModel, x, z, ry, WS);
+        // Walkable platform on top of gate arch
+        gateMesh.updateWorldMatrix(true, true);
+        const gbbox = new THREE.Box3().setFromObject(gateMesh);
+        const gSize = new THREE.Vector3(); gbbox.getSize(gSize);
+        const platformH = 0.25;
+        const topBody = new CANNON.Body({
+            mass: 0, type: CANNON.Body.STATIC,
+            collisionFilterGroup: ctx.GROUPS.STATIC,
+            collisionFilterMask: ctx.GROUPS.CHARACTER | ctx.GROUPS.PROJECTILE | ctx.GROUPS.PEER_CHARACTER | ctx.GROUPS.DEBRIS | ctx.GROUPS.BREAKABLE,
+        });
+        topBody.addShape(new CANNON.Box(new CANNON.Vec3(gSize.x / 2, platformH / 2, gSize.z / 2)));
+        topBody.position.set(x, gbbox.max.y + platformH / 2, z);
+        ctx.physicsWorld.addBody(topBody);
+        ctx.castleBodies.push(topBody);
+    });
 
     // ── Wall segments ─────────────────────────────────────────────────────────
     const fillSpan = (startT: number, endT: number, fixed: number, axis: 'x'|'z', rotY: number, step: number) => {
@@ -151,19 +167,42 @@ export function buildCastle(ctx: any) {
         { x:  HCD, z: -HCD, ry: -Math.PI / 2  - HCR },    // NE: −
         { x:  HCD, z:  HCD, ry:  0             + HCR },    // SE: +
         { x: -HCD, z:  HCD, ry:  Math.PI / 2   - HCR },   // SW: −
-    ].forEach(({ x, z, ry }) => place(ctx.hedgeCurvedModel, x, z, ry, HCS));
+    ].forEach(({ x, z, ry }) => {
+        const m = place(ctx.hedgeCurvedModel, x, z, ry, HCS);
+        addBody(m);
+    });
 
     // ── Straight hedges: N/S and E/W have independent scale, rot, inset ───────
     const hwNS = SQ - HNSI;   // N/S hedge wall-inset position
     const hwEW = SQ - HEWI;   // E/W hedge wall-inset position
-    const hedgeSpacing = 3;
-    for (let t = -SQ + 3.5; t < SQ - 3; t += hedgeSpacing) {
-        if (Math.abs(t) < gFP_N / 2 + 0.5) continue;
-        place(ctx.hedgeLargeModel ?? ctx.hedgeModel, t,    -hwNS, R_N_base + HNSR, HNS);  // N
-        place(ctx.hedgeLargeModel ?? ctx.hedgeModel, t,     hwNS, R_S_base + HNSR, HNS);  // S
-        place(ctx.hedgeLargeModel ?? ctx.hedgeModel, -hwEW, t,    R_W_base + HEWR, HEW);  // W
-        place(ctx.hedgeLargeModel ?? ctx.hedgeModel,  hwEW, t,    R_E_base + HEWR, HEW);  // E
-    }
+    const HCP = ctx.hedgeCountPerSide ?? 3;
+    const hedgeModel = ctx.hedgeLargeModel ?? ctx.hedgeModel;
+
+    // Place HCP hedges evenly across each half-span (corner→gate and gate→corner)
+    // Uses same hiN/hgN and hiE/hgE boundaries as wall fillSpan — guarantees correct
+    // gate clearance for both N/S (gFP_N) and E/W (gFP_E) independently
+    const placeHedgeSpan = (start: number, end: number, fixed: number,
+                             axis: 'x'|'z', rotY: number, scale: number) => {
+        const dir = end > start ? 1 : -1;
+        const span = Math.abs(end - start);
+        const step = span / (HCP + 1);
+        for (let i = 1; i <= HCP; i++) {
+            const t = start + dir * i * step;
+            const wx = axis === 'z' ? t : fixed;
+            const wz = axis === 'z' ? fixed : t;
+            const m = place(hedgeModel, wx, wz, rotY, scale);
+            addBody(m);
+        }
+    };
+
+    placeHedgeSpan(-hiN, -hgN, -hwNS, 'z', R_N_base + HNSR, HNS);  // N left
+    placeHedgeSpan( hgN,  hiN, -hwNS, 'z', R_N_base + HNSR, HNS);  // N right
+    placeHedgeSpan(-hiN, -hgN,  hwNS, 'z', R_S_base + HNSR, HNS);  // S left
+    placeHedgeSpan( hgN,  hiN,  hwNS, 'z', R_S_base + HNSR, HNS);  // S right
+    placeHedgeSpan(-hiE, -hgE,  hwEW, 'x', R_E_base + HEWR, HEW);  // E left
+    placeHedgeSpan( hgE,  hiE,  hwEW, 'x', R_E_base + HEWR, HEW);  // E right
+    placeHedgeSpan(-hiE, -hgE, -hwEW, 'x', R_W_base + HEWR, HEW);  // W left
+    placeHedgeSpan( hgE,  hiE, -hwEW, 'x', R_W_base + HEWR, HEW);  // W right
 
     // ── Lanterns at corners — position is direct distance from center ─────────
     ([

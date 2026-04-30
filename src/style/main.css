@@ -1,204 +1,312 @@
+/* ── Reset / base ── */
+* { box-sizing: border-box; }
+
 body {
-    background: linear-gradient(#646464, #444343, #000000);
+    background: #1a1208;
     overflow: hidden;
     margin: 0;
-    font-family: courier !important;
-    font-weight: bold !important;
+    font-family: 'Cinzel', serif;
 }
 
-#container
-{
-  pointer-events: none;
-  width: 100%;
-  height: 100%;
-  position: absolute;
-  top: 0;
-  left: 0;
-}
+a { text-decoration: none !important; }
 
-a {
-    text-decoration: none !important;
-}
+/* ── Z-index stack:
+   #container              0
+   #blur-overlay           5
+   #loading-screen        10
+   #landing-screen       100
+   #char-menu            100
+   #room-panel           100
+── */
 
-#headerinfo {
-    position: absolute;
-    top: 20px;
-    left: 20px;
-    display: grid;
-    grid-row-gap: 5px;
-    z-index: 1;
-}
-
-.nametag {
-    padding: 5px;
-    background: #ffffffb5;
-    border: 1px solid black;
-    border-radius: .25em;
-    font-family: courier;
-    font-weight: bold;
-    box-shadow: 2px 3px 5px 1px #0000006b;
-}
-
-.link_icons {
-    display: grid;
-    grid-column-gap: 0px;
-    grid-auto-flow: column;
-    justify-content: space-around;
-    align-items: center;
-    margin-top: 5px;
-}
-
-.tabs {
-    width: calc(100% - 10px);
-    display: flex;
-    cursor: pointer;
-    position: absolute;
-    user-select: none;
-
-    z-index: 1;
-    overflow-x: scroll;
-
-    -webkit-tap-highlight-color: transparent;
-    outline: none;
-    -webkit-touch-callout: none;
-    -webkit-user-select: none;
-    -moz-user-select: none;
-    -ms-user-select: none;
-    user-select: none;
-
-    &:active {
-        background: none;
-        color: inherit;
-    }
-
-    scrollbar-width: thin;
-
-    &#scenes {
-        scrollbar-color: #979797 #c2111100;
-        margin-bottom: 10px;
-        bottom: 0;
-        left: 10px;
-    }
-    &#actions {
-        scrollbar-color: transparent transparent;
-        margin-top: 10px;
-        top: 100px;
-        left: 20px;
-        width: fit-content !important;
-    }
-
-    &::-webkit-scrollbar {
-        width: 5px;
-        height: 5px;
-    }
-    &::-webkit-scrollbar-thumb {
-        background-color: #ccc;
-        border-radius: 10px;
-    }
-    &::-webkit-scrollbar-track {
-        background: transparent;
-    }
-    &::-webkit-scrollbar-button {
-        display: none;
-    }
-}
-.tab {
-    padding: 10px;
-    border: 1px solid #ccc;
-    color: #ccc;
-    margin-right: 5px;
-    white-space: nowrap;
-    text-align: center;
-
-    user-select: none;
-    -webkit-tap-highlight-color: transparent;
-    outline: none;
-    -webkit-touch-callout: none;
-    -webkit-user-select: none;
-    -moz-user-select: none;
-    -ms-user-select: none;
-    user-select: none;
-
-    &:active {
-        background: none;
-        color: inherit;
-    }
-}
-.tab.active {
-    background-color: #ddd;
-    color: black;
-}
-
-#actions .tab {
-    width: 43px;
-}
-
-#loading-screen {
-    position: absolute;
+/* ── 3D container ── */
+#container {
+    pointer-events: none;
     width: 100%;
     height: 100%;
-    background-color: #1a1a1a;
+    position: absolute;
+    top: 0;
+    left: 0;
+    z-index: 0;
+}
+
+/* ── Blur overlay ── */
+#blur-overlay {
+    position: fixed;
+    inset: 0;
+    z-index: 5;
+    backdrop-filter: blur(14px);
+    background: rgba(18, 10, 4, 0.45);
+    pointer-events: none;
+    transition: opacity 1.5s ease;
+}
+#blur-overlay.clearing {
+    opacity: 0;
+}
+
+/* ── Loading screen ── */
+#loading-screen {
+    position: fixed;
+    inset: 0;
+    background-color: #1a1208;
     display: flex;
     justify-content: center;
     align-items: center;
-    color: white;
-    font-size: 2em;
+    color: #d4b896;
+    font-size: 1.4em;
+    font-family: 'Cinzel', serif;
     z-index: 10;
     flex-direction: column;
+    gap: 16px;
 }
 
 #progress-bar-container {
-    width: 80%;
-    background-color: transparent;
-    border-radius: 10px;
+    width: 60%;
+    max-width: 360px;
+    background-color: rgba(255,255,255,0.08);
+    border-radius: 6px;
     overflow: hidden;
-    margin-top: 20px;
 }
 
 #progress-bar {
     width: 0;
-    height: 20px;
-    background-color: #ddd;
-    border-radius: 10px;
+    height: 14px;
+    background-color: #c8a060;
+    border-radius: 6px;
     transition: width 0.5s ease;
 }
 
-#drop-zone {
-    position: absolute;
-    margin: 10px;
-    width: -webkit-fill-available;
-    height: 25%;
-    color: white;
-    background-color: #ffffff14;
-    font-size: 16px;
-    border-radius: .3em;
+/* ── Landing screen ── */
+#landing-screen {
+    position: fixed;
+    inset: 0;
+    z-index: 100;
     display: flex;
-    transition: 0.3s ease;
-    gap: 10px;
+    flex-direction: column;
     align-items: center;
     justify-content: center;
+    gap: 28px;
 }
 
-img#drop-zone-icon {
-    width: 40px;
-    height: 40px;
-    border-radius: .3em;
+#game-logo {
+    max-width: 460px;
+    width: 70vw;
+    transform: scale(0);
+    filter: drop-shadow(0 4px 24px rgba(0,0,0,0.7));
 }
 
-div#drop-zone:hover {
-    box-shadow: rgb(255 255 255 / 61%) 0px 0px 15px;
-    font-size: 18px;
+@keyframes logoBounce {
+    0%   { transform: scale(0); }
+    60%  { transform: scale(1.07); }
+    80%  { transform: scale(0.96); }
+    100% { transform: scale(1); }
 }
 
-div#drop-zone.hover {
-    box-shadow: #ffffff9c 0px 0px 15px;
-    font-size: 18px;
+#game-logo.visible {
+    animation: logoBounce 0.65s cubic-bezier(.36,.07,.19,.97) forwards;
 }
 
-a#drop-zone-link {
-    color: white;
+#landing-buttons {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 12px;
 }
 
+#join-section {
+    display: none;
+    flex-direction: column;
+    align-items: center;
+    gap: 12px;
+}
+
+/* ── Character menu ── */
+#char-menu {
+    position: fixed;
+    inset: 0;
+    z-index: 100;
+    display: flex;
+    flex-wrap: wrap;
+    align-items: flex-start;
+    align-content: center;
+    justify-content: center;
+    gap: 16px;
+    padding: 16px;
+    overflow-y: auto;
+    box-sizing: border-box;
+}
+
+#char-menu-left {
+    width: min(340px, calc(100vw - 32px));
+    flex-shrink: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+#char-menu-right {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    align-items: center;
+    flex-shrink: 0;
+}
+
+#char-preview-panel,
+#proj-preview-panel {
+    width: min(220px, calc(100vw - 32px));
+    height: min(220px, 38vw);
+    min-height: 140px;
+    position: relative;
+}
+
+#char-preview-panel canvas,
+#proj-preview-panel canvas {
+    width: 100%;
+    height: 100%;
+    display: block;
+    border-radius: 4px;
+}
+
+.preview-loading {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-family: 'Cinzel', serif;
+    font-size: 12px;
+    color: #7a6a5a;
+    background: rgba(210, 185, 155, 0.55);
+    border-radius: 4px;
+    pointer-events: none;
+}
+
+.char-grid,
+.proj-grid {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+}
+
+/* ── RPG panel (9-slice) ── */
+.rpg-panel {
+    border-image: url('/img/ui/panel_beige.png') 12 fill / 12px stretch;
+    padding: 16px;
+    color: #3a2a1a;
+}
+
+.rpg-panel-inset {
+    border-image: url('/img/ui/panelInset_beige.png') 10 fill / 10px stretch;
+    padding: 8px;
+}
+
+/* ── RPG title inside panel ── */
+.rpg-menu-title {
+    font-family: 'Cinzel', serif;
+    font-weight: 700;
+    font-size: 16px;
+    color: #3a2a1a;
+    text-align: center;
+    margin-bottom: 4px;
+    letter-spacing: 0.04em;
+}
+
+/* ── Labels ── */
+.rpg-label {
+    font-family: 'Cinzel', serif;
+    font-size: 11px;
+    font-weight: 700;
+    color: #6a4e30;
+    text-transform: uppercase;
+    letter-spacing: 0.07em;
+    margin-top: 2px;
+}
+
+.rpg-label-sm {
+    font-family: 'Cinzel', serif;
+    font-size: 10px;
+    font-weight: 700;
+    color: #c8a878;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    text-shadow: 0 1px 3px rgba(0,0,0,0.6);
+}
+
+/* ── RPG name input ── */
+.rpg-input {
+    width: 100%;
+    padding: 7px 10px;
+    background: url('/img/ui/panelInset_beigeLight.png') no-repeat center / 100% 100%;
+    border: none;
+    outline: none;
+    font-family: 'Cinzel', serif;
+    font-size: 13px;
+    color: #3a2a1a;
+    border-radius: 0;
+}
+
+.rpg-input::placeholder {
+    color: #9a8878;
+    font-style: italic;
+}
+
+/* ── RPG long button ── */
+.rpg-btn {
+    background: url('/img/ui/buttonLong_beige.png') no-repeat center / 100% 100%;
+    border: none;
+    color: #3a2a1a;
+    font-family: 'Cinzel', serif;
+    font-weight: 700;
+    font-size: 13px;
+    cursor: pointer;
+    padding: 10px 28px;
+    min-width: 200px;
+    min-height: 44px;
+    letter-spacing: 0.04em;
+    transition: filter 0.1s;
+}
+
+.rpg-btn:hover {
+    filter: brightness(1.08);
+}
+
+.rpg-btn:active {
+    background-image: url('/img/ui/buttonLong_beige_pressed.png');
+    filter: none;
+}
+
+#play-btn {
+    margin-top: 6px;
+    width: 100%;
+}
+
+/* ── RPG square button ── */
+.rpg-btn-sq {
+    background: url('/img/ui/buttonSquare_beige.png') no-repeat center / 100% 100%;
+    border: none;
+    width: 42px;
+    height: 42px;
+    cursor: pointer;
+    font-family: 'Cinzel', serif;
+    font-size: 10px;
+    font-weight: 700;
+    color: #3a2a1a;
+    transition: filter 0.1s;
+    padding: 0;
+}
+
+.rpg-btn-sq:hover {
+    filter: brightness(1.1);
+}
+
+.rpg-btn-sq.selected,
+.rpg-btn-sq:active {
+    background-image: url('/img/ui/buttonSquare_beige_pressed.png');
+    filter: none;
+}
+
+/* ── Room panel (in-game, top-right) ── */
 #room-panel {
     position: fixed;
     top: 16px;
@@ -209,8 +317,8 @@ a#drop-zone-link {
     padding: 12px 14px;
     min-width: 190px;
     z-index: 100;
-    font-family: courier, monospace;
-    font-size: 13px;
+    font-family: 'Cinzel', serif;
+    font-size: 12px;
     color: #ddd;
     backdrop-filter: blur(4px);
     user-select: none;
@@ -230,8 +338,8 @@ a#drop-zone-link {
     border: 1px solid rgba(255, 255, 255, 0.2);
     border-radius: 4px;
     color: #ddd;
-    font-family: courier, monospace;
-    font-size: 12px;
+    font-family: 'Cinzel', serif;
+    font-size: 11px;
     cursor: pointer;
     transition: background 0.15s;
     margin-bottom: 10px;
@@ -242,7 +350,7 @@ a#drop-zone-link {
 }
 
 .room-section-title {
-    font-size: 11px;
+    font-size: 10px;
     color: #666;
     text-transform: uppercase;
     letter-spacing: 0.08em;
@@ -256,7 +364,7 @@ a#drop-zone-link {
 }
 
 .player-item {
-    font-size: 13px;
+    font-size: 12px;
     color: #bbb;
     white-space: nowrap;
     overflow: hidden;
@@ -267,107 +375,69 @@ a#drop-zone-link {
     color: #7ec8e3;
 }
 
-/* ── Entry Modal ── */
-#entry-modal {
-    position: fixed;
-    inset: 0;
-    background: rgba(0, 0, 0, 0.82);
+/* ── Nametag (above players in scene) ── */
+.nametag {
+    padding: 4px 7px;
+    background: #ffffffb5;
+    border: 1px solid black;
+    border-radius: .25em;
+    font-family: 'Cinzel', serif;
+    font-size: 11px;
+    font-weight: 700;
+    box-shadow: 2px 3px 5px 1px #0000006b;
+}
+
+/* ── Misc legacy classes (kept for compatibility) ── */
+#headerinfo {
+    position: absolute;
+    top: 20px;
+    left: 20px;
+    display: grid;
+    grid-row-gap: 5px;
+    z-index: 1;
+}
+
+.tabs {
+    width: calc(100% - 10px);
     display: flex;
-    align-items: center;
-    justify-content: center;
-    z-index: 2000;
-    font-family: courier, monospace;
-}
-
-#entry-modal-inner {
-    background: #1a1a1a;
-    border: 1px solid rgba(255,255,255,0.15);
-    border-radius: 10px;
-    padding: 28px 30px;
-    width: 400px;
-    display: flex;
-    flex-direction: column;
-    gap: 10px;
-    color: #ddd;
-}
-
-#entry-modal-inner h2 {
-    margin: 0 0 6px;
-    font-size: 18px;
-    color: #fff;
-    font-weight: bold;
-}
-
-#entry-modal-inner label {
-    font-size: 12px;
-    color: #888;
-    text-transform: uppercase;
-    letter-spacing: 0.06em;
-}
-
-#player-name-input {
-    width: 100%;
-    box-sizing: border-box;
-    padding: 8px 10px;
-    background: rgba(255,255,255,0.08);
-    border: 1px solid rgba(255,255,255,0.18);
-    border-radius: 5px;
-    color: #fff;
-    font-family: courier, monospace;
-    font-size: 15px;
-    outline: none;
-}
-
-#player-name-input:focus {
-    border-color: rgba(255,255,255,0.4);
-}
-
-/* ── Model Selectors ── */
-#char-selector,
-#proj-selector {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 6px;
-}
-
-.selector-btn {
-    padding: 6px 10px;
-    background: rgba(255,255,255,0.07);
-    border: 1px solid rgba(255,255,255,0.18);
-    border-radius: 5px;
-    color: #aaa;
-    font-family: courier, monospace;
-    font-size: 12px;
     cursor: pointer;
-    transition: background 0.12s, border-color 0.12s, color 0.12s;
+    position: absolute;
+    user-select: none;
+    z-index: 1;
+    overflow-x: scroll;
+    scrollbar-width: thin;
+
+    &#scenes {
+        scrollbar-color: #979797 #c2111100;
+        margin-bottom: 10px;
+        bottom: 0;
+        left: 10px;
+    }
+    &#actions {
+        scrollbar-color: transparent transparent;
+        margin-top: 10px;
+        top: 100px;
+        left: 20px;
+        width: fit-content !important;
+    }
+
+    &::-webkit-scrollbar { width: 5px; height: 5px; }
+    &::-webkit-scrollbar-thumb { background-color: #ccc; border-radius: 10px; }
+    &::-webkit-scrollbar-track { background: transparent; }
+    &::-webkit-scrollbar-button { display: none; }
 }
 
-.selector-btn:hover {
-    background: rgba(255,255,255,0.14);
-    color: #fff;
-}
-
-.selector-btn.selected {
-    background: rgba(255,255,255,0.18);
-    border-color: rgba(255,255,255,0.5);
-    color: #fff;
-}
-
-#enter-btn {
-    margin-top: 6px;
+.tab {
     padding: 10px;
-    width: 100%;
-    background: rgba(255,255,255,0.12);
-    border: 1px solid rgba(255,255,255,0.25);
-    border-radius: 5px;
-    color: #fff;
-    font-family: courier, monospace;
-    font-size: 14px;
-    font-weight: bold;
-    cursor: pointer;
-    transition: background 0.15s;
+    border: 1px solid #ccc;
+    color: #ccc;
+    margin-right: 5px;
+    white-space: nowrap;
+    text-align: center;
+    user-select: none;
 }
-
-#enter-btn:hover {
-    background: rgba(255,255,255,0.22);
+.tab.active {
+    background-color: #ddd;
+    color: black;
 }
+#actions .tab { width: 43px; }

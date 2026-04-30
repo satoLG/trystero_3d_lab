@@ -153,6 +153,7 @@ class ProtectCrystalScene extends ThreejsScene {
     hedgeCurvedScale: number
     hedgeCurvedRotOffset: number
     hedgeCurvedDistFromCenter: number
+    hedgeCountPerSide: number
     hedgeNsScale: number
     hedgeNsRotOffset: number
     hedgeNsInset: number
@@ -223,7 +224,7 @@ class ProtectCrystalScene extends ThreejsScene {
         const room = getOrCreateRoomId();
         this.roomId        = room.id;
         this.isRoomCreator = room.isCreator;
-        this.myName          = playerConfig.name  || this.getRandomGoblinName();
+        this.myName          = playerConfig.name  || this.getRandomPlayerName();
         this.characterModel  = playerConfig.characterModel  || 'male-a';
         this.projectileModel = playerConfig.projectileModel || 'donut';
         this.room = null;
@@ -301,6 +302,7 @@ class ProtectCrystalScene extends ThreejsScene {
         this.hedgeCurvedScale         = CASTLE_CONFIG.hedgeCurvedScale;
         this.hedgeCurvedRotOffset     = CASTLE_CONFIG.hedgeCurvedRotOffset;
         this.hedgeCurvedDistFromCenter = CASTLE_CONFIG.hedgeCurvedDistFromCenter;
+        this.hedgeCountPerSide        = CASTLE_CONFIG.hedgeCountPerSide;
         this.hedgeNsScale             = CASTLE_CONFIG.hedgeNsScale;
         this.hedgeNsRotOffset         = CASTLE_CONFIG.hedgeNsRotOffset;
         this.hedgeNsInset             = CASTLE_CONFIG.hedgeNsInset;
@@ -369,9 +371,12 @@ class ProtectCrystalScene extends ThreejsScene {
         this.electNewHost();
         console.log('[SYNC] finishSync | isRoomCreator:', this.isRoomCreator, '| isPhysicsHost:', this.isPhysicsHost, '| targets:', this.breakableTargets.length);
         if (this.isPhysicsHost && this.breakableTargets.length === 0) {
-            this.createInitialTargets();
+            const doCreate = () => { this.createInitialTargets(); this.syncTargetPhysicsType(); };
+            if (this.roundedCubeModel) doCreate();
+            else { const w = setInterval(() => { if (this.roundedCubeModel) { clearInterval(w); doCreate(); } }, 50); }
+        } else {
+            this.syncTargetPhysicsType();
         }
-        this.syncTargetPhysicsType();
         this.loadLocalCharacter();
         if (this.isPhysicsHost && this.sendInitialTargets) {
             this.startHostBroadcast();
@@ -479,82 +484,16 @@ class ProtectCrystalScene extends ThreejsScene {
             });
         };
 
-        // ── Cubes ──────────────────────────────────────────────────────────────
-        const respawnCubes = () => {
-            this.breakableTargets.forEach(t => { this.scene.remove(t.mesh); this.physicsWorld.removeBody(t.body); });
-            this.breakableTargets = [];
-            this.createInitialTargets();
-            this.syncTargetPhysicsType();
-        };
-        const cubeFolder = this.debugGui.gui.addFolder('Cubes');
-        cubeFolder.add(this, 'roundedCubeScale', 0.5, 8).name('Scale').onFinishChange(respawnCubes);
-        cubeFolder.add({ respawn: respawnCubes }, 'respawn').name('Respawn Targets');
-        cubeFolder.add({ copy: () => copyConfig('SCENE', {
-            roundedCubeScale: this.roundedCubeScale,
-            targetCount: this.breakableTargets.length || 7,
-        }) }, 'copy').name('📋 Copy Cube Config');
-
         // ── Camera ─────────────────────────────────────────────────────────────
         const cameraFolder = this.debugGui.gui.addFolder('Camera');
         cameraFolder.add(this.camera.position, 'x', -50, 50).name('Position X').listen();
         cameraFolder.add(this.camera.position, 'y', -50, 50).name('Position Y').listen();
         cameraFolder.add(this.camera.position, 'z', -50, 50).name('Position Z').listen();
 
-        // ── Lighting ───────────────────────────────────────────────────────────
-        const lightFolder = this.debugGui.gui.addFolder('Directional Light');
-        lightFolder.add(this.directionalLight.position, 'x', -100, 100).name('Position X').listen();
-        lightFolder.add(this.directionalLight.position, 'y', -100, 100).name('Position Y').listen();
-        lightFolder.add(this.directionalLight.position, 'z', -100, 100).name('Position Z').listen();
-        lightFolder.add(this.directionalLight, 'intensity', 0, 10).name('Intensity').listen();
-        lightFolder.add({ copy: () => copyConfig('SCENE', {
-            directionalLightIntensity: this.directionalLight.intensity,
-            directionalLightPos: { x: this.directionalLight.position.x, y: this.directionalLight.position.y, z: this.directionalLight.position.z },
-            ambientLightIntensity: this.ambientLight.intensity,
-        }) }, 'copy').name('📋 Copy Light Config');
-        const ambientLightFolder = this.debugGui.gui.addFolder('Ambient Light');
-        ambientLightFolder.add(this.ambientLight, 'intensity', 0, 6).name('Intensity').listen();
-
-        // ── Castle ─────────────────────────────────────────────────────────────
+        // ── Castle super-folder ────────────────────────────────────────────────
         const rebuild = () => { this.destroyCastle(); this.buildCastle(); };
-
-        const wallsFolder = this.debugGui.gui.addFolder('Castle Walls');
-        wallsFolder.add(this, 'castleWallScale', 0.5, 8).name('Scale').onFinishChange(rebuild);
-        wallsFolder.add(this, 'nsRotOffset', -Math.PI, Math.PI).name('N/S Rot Offset').onFinishChange(rebuild);
-        wallsFolder.add(this, 'ewRotOffset', -Math.PI, Math.PI).name('E/W Rot Offset').onFinishChange(rebuild);
-
-        const cornersFolder = this.debugGui.gui.addFolder('Castle Corners');
-        cornersFolder.add(this, 'cornerScale', 0.5, 8).name('Corner Scale').onFinishChange(rebuild);
-        cornersFolder.add(this, 'cornerRotOffset', -Math.PI, Math.PI).name('Corner Rot').onFinishChange(rebuild);
-        cornersFolder.add(this, 'towerScale', 0.5, 8).name('Tower Scale').onFinishChange(rebuild);
-        cornersFolder.add(this, 'towerRotOffset', -Math.PI, Math.PI).name('Tower Rot').onFinishChange(rebuild);
-
-        const hedgesFolder = this.debugGui.gui.addFolder('Castle Hedges (Curved)');
-        hedgesFolder.add(this, 'hedgeCurvedScale', 0.5, 5).name('Scale').onFinishChange(rebuild);
-        hedgesFolder.add(this, 'hedgeCurvedRotOffset', -Math.PI, Math.PI).name('Rot (inward)').onFinishChange(rebuild);
-        hedgesFolder.add(this, 'hedgeCurvedDistFromCenter', 0, 20).name('Dist from Center').onFinishChange(rebuild);
-
-        const hedgeNsFolder = this.debugGui.gui.addFolder('Castle Hedges (N/S)');
-        hedgeNsFolder.add(this, 'hedgeNsScale', 0.5, 5).name('Scale').onFinishChange(rebuild);
-        hedgeNsFolder.add(this, 'hedgeNsRotOffset', -Math.PI, Math.PI).name('Rot Offset').onFinishChange(rebuild);
-        hedgeNsFolder.add(this, 'hedgeNsInset', 0, 5).name('Wall Inset').onFinishChange(rebuild);
-
-        const hedgeEwFolder = this.debugGui.gui.addFolder('Castle Hedges (E/W)');
-        hedgeEwFolder.add(this, 'hedgeEwScale', 0.5, 5).name('Scale').onFinishChange(rebuild);
-        hedgeEwFolder.add(this, 'hedgeEwRotOffset', -Math.PI, Math.PI).name('Rot Offset').onFinishChange(rebuild);
-        hedgeEwFolder.add(this, 'hedgeEwInset', 0, 5).name('Wall Inset').onFinishChange(rebuild);
-
-        const lanternsFolder = this.debugGui.gui.addFolder('Castle Lanterns');
-        lanternsFolder.add(this, 'lanternScale', 0.5, 8).name('Scale').onFinishChange(rebuild);
-        lanternsFolder.add(this, 'lanternDistFromCenter', 0, 20).name('Dist from Center').onFinishChange(rebuild);
-        lanternsFolder.add(this, 'lanternLightY', 0, 10).name('Light Y (×scale)').onFinishChange(rebuild);
-        lanternsFolder.add(this, 'lanternLightIntensity', 0, 200).name('Intensity').onChange(() => {
-            this.castleLanternLights.forEach(l => { l.intensity = this.lanternLightIntensity; });
-        });
-        lanternsFolder.add(this, 'lanternLightDistance', 1, 200).name('Distance').onChange(() => {
-            this.castleLanternLights.forEach(l => { l.distance = this.lanternLightDistance; });
-        });
-
-        this.debugGui.gui.add({ copy: () => copyConfig('CASTLE', {
+        const castleFolder = this.debugGui.gui.addFolder('Castle');
+        castleFolder.add({ copy: () => copyConfig('CASTLE', {
             wallScale: this.castleWallScale,
             nsRotOffset: this.nsRotOffset,
             ewRotOffset: this.ewRotOffset,
@@ -565,6 +504,7 @@ class ProtectCrystalScene extends ThreejsScene {
             hedgeCurvedScale: this.hedgeCurvedScale,
             hedgeCurvedRotOffset: this.hedgeCurvedRotOffset,
             hedgeCurvedDistFromCenter: this.hedgeCurvedDistFromCenter,
+            hedgeCountPerSide: this.hedgeCountPerSide,
             hedgeNsScale: this.hedgeNsScale,
             hedgeNsRotOffset: this.hedgeNsRotOffset,
             hedgeNsInset: this.hedgeNsInset,
@@ -578,39 +518,97 @@ class ProtectCrystalScene extends ThreejsScene {
             lanternLightDistance: this.lanternLightDistance,
         }) }, 'copy').name('📋 Copy Castle Config');
 
-        // ── Trees ──────────────────────────────────────────────────────────────
-        const rebuildTrees = () => { removeTrees(this); plantTrees(this); };
-        const treesFolder = this.debugGui.gui.addFolder('Trees');
-        treesFolder.add(this, 'treeCount', 10, 2000, 1).name('Count');
-        treesFolder.add(this, 'treeForestInnerRadius', 10, 120).name('Inner Radius');
-        treesFolder.add(this, 'treeForestOuterRadius', 20, 150).name('Outer Radius');
-        treesFolder.add({ rebuild: rebuildTrees }, 'rebuild').name('Rebuild Forest');
-        treesFolder.add({ copy: () => copyConfig('SCENE', {
+        const wallsFolder = castleFolder.addFolder('Walls');
+        wallsFolder.add(this, 'castleWallScale', 0.5, 8).name('Scale').onFinishChange(rebuild);
+        wallsFolder.add(this, 'nsRotOffset', -Math.PI, Math.PI).name('N/S Rot Offset').onFinishChange(rebuild);
+        wallsFolder.add(this, 'ewRotOffset', -Math.PI, Math.PI).name('E/W Rot Offset').onFinishChange(rebuild);
+
+        const cornersFolder = castleFolder.addFolder('Corners');
+        cornersFolder.add(this, 'cornerScale', 0.5, 8).name('Corner Scale').onFinishChange(rebuild);
+        cornersFolder.add(this, 'cornerRotOffset', -Math.PI, Math.PI).name('Corner Rot').onFinishChange(rebuild);
+        cornersFolder.add(this, 'towerScale', 0.5, 8).name('Tower Scale').onFinishChange(rebuild);
+        cornersFolder.add(this, 'towerRotOffset', -Math.PI, Math.PI).name('Tower Rot').onFinishChange(rebuild);
+
+        const hedgesCurvedFolder = castleFolder.addFolder('Hedges (Curved)');
+        hedgesCurvedFolder.add(this, 'hedgeCurvedScale', 0.5, 5).name('Scale').onFinishChange(rebuild);
+        hedgesCurvedFolder.add(this, 'hedgeCurvedRotOffset', -Math.PI, Math.PI).name('Rot (inward)').onFinishChange(rebuild);
+        hedgesCurvedFolder.add(this, 'hedgeCurvedDistFromCenter', 0, 20).name('Dist from Center').onFinishChange(rebuild);
+
+        const hedgesNsFolder = castleFolder.addFolder('Hedges (N/S)');
+        hedgesNsFolder.add(this, 'hedgeCountPerSide', 1, 6, 1).name('Count per Side').onFinishChange(rebuild);
+        hedgesNsFolder.add(this, 'hedgeNsScale', 0.5, 5).name('Scale').onFinishChange(rebuild);
+        hedgesNsFolder.add(this, 'hedgeNsRotOffset', -Math.PI, Math.PI).name('Rot Offset').onFinishChange(rebuild);
+        hedgesNsFolder.add(this, 'hedgeNsInset', 0, 5).name('Wall Inset').onFinishChange(rebuild);
+
+        const hedgesEwFolder = castleFolder.addFolder('Hedges (E/W)');
+        hedgesEwFolder.add(this, 'hedgeEwScale', 0.5, 5).name('Scale').onFinishChange(rebuild);
+        hedgesEwFolder.add(this, 'hedgeEwRotOffset', -Math.PI, Math.PI).name('Rot Offset').onFinishChange(rebuild);
+        hedgesEwFolder.add(this, 'hedgeEwInset', 0, 5).name('Wall Inset').onFinishChange(rebuild);
+
+        const lanternsFolder = castleFolder.addFolder('Lanterns');
+        lanternsFolder.add(this, 'lanternScale', 0.5, 8).name('Scale').onFinishChange(rebuild);
+        lanternsFolder.add(this, 'lanternDistFromCenter', 0, 20).name('Dist from Center').onFinishChange(rebuild);
+        lanternsFolder.add(this, 'lanternLightY', 0, 10).name('Light Y (×scale)').onFinishChange(rebuild);
+        lanternsFolder.add(this, 'lanternLightIntensity', 0, 200).name('Intensity').onChange(() => {
+            this.castleLanternLights.forEach(l => { l.intensity = this.lanternLightIntensity; });
+        });
+        lanternsFolder.add(this, 'lanternLightDistance', 1, 200).name('Distance').onChange(() => {
+            this.castleLanternLights.forEach(l => { l.distance = this.lanternLightDistance; });
+        });
+
+        // ── Scene super-folder ─────────────────────────────────────────────────
+        const sceneFolder = this.debugGui.gui.addFolder('Scene');
+        sceneFolder.add({ copy: () => copyConfig('SCENE', {
+            roundedCubeScale: this.roundedCubeScale,
+            targetCount: this.breakableTargets.length || SCENE_CONFIG.targetCount,
+            directionalLightIntensity: this.directionalLight.intensity,
+            directionalLightPos: { x: this.directionalLight.position.x, y: this.directionalLight.position.y, z: this.directionalLight.position.z },
+            ambientLightIntensity: this.ambientLight.intensity,
             treeCount: this.treeCount,
             treeForestInnerRadius: this.treeForestInnerRadius,
             treeForestOuterRadius: this.treeForestOuterRadius,
             treeScale: this.treeScale,
-        }) }, 'copy').name('📋 Copy Tree Config');
-
-        // ── Forest Fog ─────────────────────────────────────────────────────────
-        const rebuildFog = () => { removeForestFog(this); addForestFog(this); };
-        const fogFolder = this.debugGui.gui.addFolder('Forest Fog');
-        fogFolder.add(this, 'forestFogRadius', 20, 200).name('Radius').onFinishChange(rebuildFog);
-        fogFolder.add(this, 'forestFogOpacity', 0, 1).name('Opacity').onChange(() => {
-            if (this.forestFogMesh) (this.forestFogMesh as THREE.Mesh).material['opacity'] = this.forestFogOpacity;
-        });
-        fogFolder.add(this, 'forestFogHeight', 5, 100).name('Height').onFinishChange(rebuildFog);
-        fogFolder.add({ copy: () => copyConfig('SCENE', {
             forestFogRadius: this.forestFogRadius,
             forestFogOpacity: this.forestFogOpacity,
             forestFogHeight: this.forestFogHeight,
-        }) }, 'copy').name('📋 Copy Fog Config');
+            crystalYOffset: this.crystalYOffset,
+            crystalLightIntensity: this.crystalLightIntensity,
+            crystalLightDistance: this.crystalLightDistance,
+        }) }, 'copy').name('📋 Copy Scene Config');
 
-        // ── Crystal & Fountain ─────────────────────────────────────────────────
-        const crystalFolder = this.debugGui.gui.addFolder('Crystal & Fountain');
+        const respawnCubes = () => {
+            this.breakableTargets.forEach(t => { this.scene.remove(t.mesh); this.physicsWorld.removeBody(t.body); });
+            this.breakableTargets = [];
+            this.createInitialTargets();
+            this.syncTargetPhysicsType();
+        };
+        const cubeFolder = sceneFolder.addFolder('Cubes');
+        cubeFolder.add(this, 'roundedCubeScale', 0.5, 8).name('Scale').onFinishChange(respawnCubes);
+        cubeFolder.add({ respawn: respawnCubes }, 'respawn').name('Respawn Targets');
+
+        const lightingFolder = sceneFolder.addFolder('Lighting');
+        lightingFolder.add(this.directionalLight.position, 'x', -100, 100).name('Dir X').listen();
+        lightingFolder.add(this.directionalLight.position, 'y', -100, 100).name('Dir Y').listen();
+        lightingFolder.add(this.directionalLight.position, 'z', -100, 100).name('Dir Z').listen();
+        lightingFolder.add(this.directionalLight, 'intensity', 0, 10).name('Dir Intensity').listen();
+        lightingFolder.add(this.ambientLight, 'intensity', 0, 6).name('Ambient Intensity').listen();
+
+        const rebuildTrees = () => { removeTrees(this); plantTrees(this); };
+        const treesFolder = sceneFolder.addFolder('Trees');
+        treesFolder.add(this, 'treeCount', 10, 2000, 1).name('Count');
+        treesFolder.add(this, 'treeForestInnerRadius', 10, 120).name('Inner Radius');
+        treesFolder.add(this, 'treeForestOuterRadius', 20, 150).name('Outer Radius');
+        treesFolder.add({ rebuild: rebuildTrees }, 'rebuild').name('Rebuild Forest');
+
+        const rebuildFog = () => { removeForestFog(this); addForestFog(this); };
+        const fogFolder = sceneFolder.addFolder('Forest Fog');
+        fogFolder.add(this, 'forestFogRadius', 20, 200).name('Radius').onFinishChange(rebuildFog);
+        fogFolder.add(this, 'forestFogOpacity', 0, 1).name('Opacity').onFinishChange(rebuildFog);
+        fogFolder.add(this, 'forestFogHeight', 5, 100).name('Height').onFinishChange(rebuildFog);
+
+        const crystalFolder = sceneFolder.addFolder('Crystal & Fountain');
         crystalFolder.add(this, 'crystalYOffset', 0, 10).name('Crystal Y Offset').onFinishChange(() => {
             if (!this.crystalMesh || !this.crystalLight || !this.crystalBody) return;
-            // Recompute base Y from fountain mesh bounding box
             if (this.fountainMesh) {
                 const fbbox = new THREE.Box3().setFromObject(this.fountainMesh);
                 this.crystalBaseY = fbbox.max.y + this.crystalYOffset;
@@ -627,17 +625,9 @@ class ProtectCrystalScene extends ThreejsScene {
         crystalFolder.add(this, 'crystalLightDistance', 0, 100).name('Light Distance').onChange(() => {
             if (this.crystalLight) this.crystalLight.distance = this.crystalLightDistance;
         });
-        crystalFolder.add({ copy: () => copyConfig('SCENE', {
-            crystalYOffset: this.crystalYOffset,
-            crystalLightIntensity: this.crystalLightIntensity,
-            crystalLightDistance: this.crystalLightDistance,
-        }) }, 'copy').name('📋 Copy Crystal Config');
 
         // ── Physics ────────────────────────────────────────────────────────────
         const physFolder = this.debugGui.gui.addFolder('Physics');
-        physFolder.add(this, 'characterSpeed', 1, 20).name('Speed').listen();
-        physFolder.add(this, 'jumpVelocity', 2, 20).name('Jump').listen();
-        physFolder.add(this, 'projectileSpeed', 5, 50).name('Proj Speed').listen();
         physFolder.add({ copy: () => copyConfig('PHYSICS', {
             characterSpeed: this.characterSpeed,
             jumpVelocity: this.jumpVelocity,
@@ -645,6 +635,9 @@ class ProtectCrystalScene extends ThreejsScene {
             projectileMass: this.projectileMass,
             shootCooldown: this.shootCooldown,
         }) }, 'copy').name('📋 Copy Physics Config');
+        physFolder.add(this, 'characterSpeed', 1, 20).name('Speed').listen();
+        physFolder.add(this, 'jumpVelocity', 2, 20).name('Jump').listen();
+        physFolder.add(this, 'projectileSpeed', 5, 50).name('Proj Speed').listen();
     }
 
     // ── Init ─────────────────────────────────────────────────────────────────
@@ -1014,9 +1007,10 @@ class ProtectCrystalScene extends ThreejsScene {
         if (this.character.animations[animName]) { this.character.animations[animName].play(); this.currentAnim = animName; }
     }
 
-    getRandomGoblinName() {
-        const adj = ["Travesso","Astuto","Fedorento","Saltitante","Ranzinza","Veloz","Barulhento","Zangado","Misterioso","Sorrateiro","Bagunceiro","Engraçado","Fanfarrão","Desastrado","Esperto"];
-        return `Goblin ${adj[Math.floor(Math.random() * adj.length)]}`;
+    getRandomPlayerName() {
+        const adj  = ['Crystal','Gem','Stone','Arcane','Sacred','Radiant','Ancient','Mystic','Prismatic','Noble','Eternal','Bright'];
+        const noun = ['Guardian','Warden','Keeper','Sentinel','Knight','Mage','Ranger','Warrior','Champion','Defender','Sage','Protector'];
+        return `${adj[Math.floor(Math.random() * adj.length)]} ${noun[Math.floor(Math.random() * noun.length)]}`;
     }
 
     createInitialTargets() {
@@ -1134,7 +1128,7 @@ class ProtectCrystalScene extends ThreejsScene {
                     if (child.material) {
                         if (!child.material.isMeshStandardMaterial) {
                             const orig = child.material;
-                            child.material = new THREE.MeshStandardMaterial({ color: orig.color ?? 0xffffff, roughness: 0.8, metalness: 0.1 });
+                            child.material = new THREE.MeshStandardMaterial({ color: orig.color ?? 0xffffff, map: orig.map ?? null, roughness: 0.8, metalness: 0.1 });
                         } else {
                             child.material = child.material.clone();
                         }
