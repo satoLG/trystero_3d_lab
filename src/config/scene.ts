@@ -1,5 +1,5 @@
 export const SCENE_CONFIG = {
-    skyColor: '#87ceeb',
+    skyColor: '#32464e',
     fogDensity: 0.007,
     groundSize: 2000,
     grassRepeat: 1200,
@@ -9,15 +9,13 @@ export const SCENE_CONFIG = {
     treeForestInnerRadius: 43.46,
     treeForestOuterRadius: 53.7,
     treeScale: 1.45,
-    // Forest fog ring — cylinder centered on castle hiding what's beyond the trees
-    forestFogRadius: 46.64,
-    forestFogOpacity: 0.631,
+    forestFogRadius: 53.3,
+    forestFogOpacity: 1,
     forestFogHeight: 40,
     targetCount: 7,
     targetMinRadius: 18,
     targetMaxRadius: 38,
     roundedCubeScale: 2.5,
-    // Crystal & Fountain
     crystalYOffset: 0.71,
     crystalLightIntensity: 15.12,
     crystalLightDistance: 31.3,
@@ -25,3 +23,4 @@ export const SCENE_CONFIG = {
     directionalLightPos: { x: 10, y: 50, z: 10 },
     ambientLightIntensity: 0.024,
 };
+

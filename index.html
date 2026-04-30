@@ -1,36 +1,25 @@
 <!DOCTYPE html>
 <html lang="pt">
     <head>
-        <title>Leonardo Sato</title>
-        <link rel="icon" href="/favicon.ico">
+        <title>Protect the Crystal</title>
+        <link rel="icon" href="/img/crystal.ico">
         <meta charset="utf-8">
         <meta content="IE=edge,chrome=1" http-equiv="X-UA-Compatible">
-        <meta content="Página padrão" name="description">
+        <meta content="Protect the Crystal — multiplayer arena" name="description">
         <meta content="width=device-width, initial-scale=1" name="viewport">
         <link rel="preconnect" href="https://fonts.googleapis.com">
-        <link href="https://fonts.googleapis.com/css2?family=DM+Sans&display=swap" rel="stylesheet">
-        <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;700&display=swap" rel="stylesheet">
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+        <link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@400;700&display=swap" rel="stylesheet">
     </head>
     <body>
         <div id="container"></div>
+        <div id="blur-overlay"></div>
         <div id="loading-screen" style="display: none;">
-            <span id="loading-desc">Loading...</span>
+            <span id="loading-desc">Carregando personagem...</span>
             <div id="progress-bar-container">
                 <div id="progress-bar"></div>
             </div>
         </div>
         <script type="module" src="/src/main.ts"></script>
-        <div id="entry-modal">
-            <div id="entry-modal-inner">
-                <h2>Entrar na Sala</h2>
-                <label for="player-name-input">Seu nome</label>
-                <input id="player-name-input" type="text" maxlength="20" autocomplete="off" />
-                <label>Personagem</label>
-                <div id="char-selector"></div>
-                <label>Projétil</label>
-                <div id="proj-selector"></div>
-                <button id="enter-btn">Entrar</button>
-            </div>
-        </div>
     </body>
 </html>

@@ -157,26 +157,35 @@ export function removeForestFog(ctx: any) {
 
 export function addForestFog(ctx: any) {
     removeForestFog(ctx);
-    const radius  = ctx.forestFogRadius  ?? SCENE_CONFIG.forestFogRadius;
-    const opacity = ctx.forestFogOpacity ?? SCENE_CONFIG.forestFogOpacity;
-    const height  = ctx.forestFogHeight  ?? SCENE_CONFIG.forestFogHeight;
-    const skyColor = new THREE.Color(SCENE_CONFIG.skyColor);
+    const outerRadius = ctx.forestFogRadius  ?? SCENE_CONFIG.forestFogRadius;
+    const maxOpacity  = ctx.forestFogOpacity ?? SCENE_CONFIG.forestFogOpacity;
+    const height      = ctx.forestFogHeight  ?? SCENE_CONFIG.forestFogHeight;
+    const skyColor    = new THREE.Color(SCENE_CONFIG.skyColor);
 
-    // Tall inside-facing cylinder that fades to sky color at the forest boundary
-    const fogGeo = new THREE.CylinderGeometry(radius, radius, height, 64, 1, true);
-    const fogMat = new THREE.MeshBasicMaterial({
-        color: skyColor,
-        transparent: true,
-        opacity,
-        side: THREE.BackSide,
-        depthWrite: false,
-        fog: false,
-    });
-    const fogMesh = new THREE.Mesh(fogGeo, fogMat);
-    fogMesh.position.y = height / 2;
-    fogMesh.renderOrder = 10;
-    ctx.scene.add(fogMesh);
-    ctx.forestFogMesh = fogMesh;
+    // Six concentric inside-facing cylinders stepping from inner radius to outer,
+    // with opacity ramping up quadratically — creates a smooth radial fog gradient
+    const LAYERS = 6;
+    const gradientSpan = 15;
+    const group = new THREE.Group();
+    for (let i = 0; i < LAYERS; i++) {
+        const t = i / (LAYERS - 1);
+        const layerRadius  = outerRadius - gradientSpan * (1 - t);
+        const layerOpacity = maxOpacity * t * t;
+        const geo = new THREE.CylinderGeometry(layerRadius, layerRadius, height, 64, 1, true);
+        const mat = new THREE.MeshBasicMaterial({
+            color: skyColor,
+            transparent: true,
+            opacity: layerOpacity,
+            side: THREE.BackSide,
+            depthWrite: false,
+            fog: false,
+        });
+        group.add(new THREE.Mesh(geo, mat));
+    }
+    group.position.y = height / 2;
+    group.renderOrder = 10;
+    ctx.scene.add(group);
+    ctx.forestFogMesh = group;
 }
 
 export function placeStaticObjects(ctx: any) {
